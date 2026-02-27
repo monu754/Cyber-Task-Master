@@ -1,7 +1,7 @@
 # 🌌 Cyber-Task Master  
 
 <p align="center">
-  <img src="./assets/preview.png" alt="Cyber Task Master Preview" width="800"/>
+  <img src="./assets/images/preview.png" alt="Cyber Task Master Preview" width="800"/>
 </p>
 
 ## 📌 Project Summary  
