@@ -1,18 +1,41 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import HomeScreen from './screens/HomeScreen'; // Adjust paths if necessary
-import AddTaskScreen from './screens/AddTaskScreen'; // Adjust paths if necessary
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
+import { initDatabase } from "./database";
+import AddTaskScreen from "./screens/AddTaskScreen";
+import HomeScreen from "./screens/HomeScreen";
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const [isDbReady, setIsDbReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      initDatabase();
+      console.log("Database Engine Initialized");
+      setIsDbReady(true);
+    } catch (error) {
+      console.error("Failed to initialize database:", error);
+    }
+  }, []);
+
+  if (!isDbReady) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#020617" />
+        <ActivityIndicator size="large" color="#6366F1" />
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer>
-      <Stack.Navigator 
-        // 👇 THIS IS THE MAGIC LINE TO REMOVE THE WHITE BAR
-        screenOptions={{ 
+      <Stack.Navigator
+        screenOptions={{
           headerShown: false,
-          animation: 'fade', // Optional: adds a smooth fade transition between screens
+          animation: "fade",
         }}
       >
         <Stack.Screen name="Home" component={HomeScreen} />
@@ -21,3 +44,12 @@ export default function App() {
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#020617",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});
