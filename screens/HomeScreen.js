@@ -33,6 +33,21 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Reminder options for user to choose from
+const REMINDER_OPTIONS = [
+  { label: 'At time of task', value: 0 },
+  { label: '5 minutes before', value: 5 },
+  { label: '15 minutes before', value: 15 },
+  { label: '30 minutes before', value: 30 },
+  { label: '1 hour before', value: 60 },
+  { label: '2 hours before', value: 120 },
+  { label: '6 hours before', value: 360 },
+  { label: '12 hours before', value: 720 },
+  { label: '1 day before', value: 1440 },
+  { label: '2 days before', value: 2880 },
+  { label: '1 week before', value: 10080 },
+];
+
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   
@@ -47,11 +62,16 @@ export default function HomeScreen({ navigation }) {
   // Filter states
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState({
-    timeRange: "all", // 'today', 'week', 'all'
-    priority: "all", // 'all', 'High', 'Medium', 'Low'
-    status: "all", // 'all', 'completed', 'pending'
-    category: "all", // 'all' or category id
+    timeRange: "all",
+    priority: "all",
+    status: "all",
+    category: "all",
   });
+  
+  // Reminder settings modal
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [selectedTaskForReminder, setSelectedTaskForReminder] = useState(null);
+  const [selectedReminderMinutes, setSelectedReminderMinutes] = useState(1440); // Default 1 day
   
   // Categories for filter
   const [categories, setCategories] = useState([]);
@@ -88,8 +108,23 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Schedule notifications
-  const scheduleTaskNotification = async (task) => {
+  // Cancel all notifications for a specific task
+  const cancelTaskNotifications = async (taskId) => {
+    try {
+      const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+      for (const notification of scheduledNotifications) {
+        if (notification.content.data?.taskId === taskId) {
+          await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+          console.log(`Cancelled notification for task ${taskId}`);
+        }
+      }
+    } catch (error) {
+      console.error("Error canceling notifications:", error);
+    }
+  };
+
+  // Schedule a single notification for a task
+  const scheduleSingleNotification = async (task) => {
     if (!task.due_date || task.completed === 1) return;
 
     try {
@@ -98,38 +133,86 @@ export default function HomeScreen({ navigation }) {
 
       if (dueDate <= now) return;
 
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "⏰ Task Due",
-          body: `"${task.title}" is due now!`,
-          data: { taskId: task.id },
-        },
-        trigger: {
-          type: 'date',
-          date: dueDate,
-          channelId: Platform.OS === "android" ? "default" : null,
-        }
-      });
+      // Get reminder minutes from task (default to 1440 = 1 day)
+      const reminderMinutes = task.reminder_minutes || 1440;
+      
+      // Calculate reminder time
+      const reminderTime = reminderMinutes > 0 
+        ? new Date(dueDate.getTime() - reminderMinutes * 60 * 1000)
+        : dueDate;
 
-      const reminderDate = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
-      if (reminderDate > now) {
+      if (reminderTime > now) {
+        // Format the notification title based on reminder type
+        let title = "⏰ Task Due";
+        let body = `"${task.title}" is due now!`;
+        
+        if (reminderMinutes > 0) {
+          if (reminderMinutes < 60) {
+            title = `⏳ Due in ${reminderMinutes} minutes`;
+          } else if (reminderMinutes < 1440) {
+            title = `⏳ Due in ${reminderMinutes / 60} hours`;
+          } else {
+            title = `⏳ Due in ${reminderMinutes / 1440} days`;
+          }
+          body = `"${task.title}" is due soon!`;
+        }
+
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: "⏳ Due Tomorrow",
-            body: `"${task.title}" is due tomorrow!`,
-            data: { taskId: task.id },
+            title,
+            body,
+            data: { 
+              taskId: task.id, 
+              reminderMinutes,
+              taskTitle: task.title 
+            },
+            sound: true,
           },
           trigger: {
             type: 'date',
-            date: reminderDate,
+            date: reminderTime,
             channelId: Platform.OS === "android" ? "default" : null,
           }
         });
+        
+        console.log(`Scheduled ONE notification for task ${task.id} at ${reminderTime}`);
       }
     } catch (error) {
       console.log("Notification scheduling error:", error);
     }
   };
+
+  // Update notifications for a specific task
+  const updateTaskNotifications = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    // First cancel existing notifications for this task
+    await cancelTaskNotifications(taskId);
+    
+    // Then schedule a new one if needed
+    await scheduleSingleNotification(task);
+  };
+
+  // This function should ONLY be called when tasks are first loaded or when a task is modified
+  const syncAllNotifications = useCallback(async () => {
+    try {
+      console.log("Syncing all notifications...");
+      
+      // Get all pending tasks with due dates
+      const pendingTasks = tasks.filter(t => t.due_date && t.completed === 0);
+      
+      // For each task, cancel old and schedule new
+      for (const task of pendingTasks) {
+        await cancelTaskNotifications(task.id);
+        await scheduleSingleNotification(task);
+      }
+      
+      console.log(`Synced ${pendingTasks.length} task notifications`);
+    } catch (error) {
+      console.error("Error syncing notifications:", error);
+    }
+  }, [tasks]);
 
   // Apply filters and search to tasks
   const applyFilters = useCallback((allTasks, query, filters) => {
@@ -186,6 +269,13 @@ export default function HomeScreen({ navigation }) {
 
   const loadTasks = useCallback(() => {
     try {
+      // Check if reminder_minutes column exists, if not add it
+      try {
+        db.runSync('ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 1440');
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+
       const allTasks = db.getAllSync(`
         SELECT tasks.*, categories.name AS category_name, categories.color AS category_color 
         FROM tasks LEFT JOIN categories ON tasks.category_id = categories.id 
@@ -200,10 +290,6 @@ export default function HomeScreen({ navigation }) {
       const filtered = applyFilters(allTasks, searchQuery, selectedFilters);
       setFilteredTasks(filtered);
       
-      // Schedule notifications for each task
-      allTasks.forEach(task => {
-        scheduleTaskNotification(task);
-      });
     } catch (error) {
       console.error("Error loading tasks:", error);
     }
@@ -215,22 +301,42 @@ export default function HomeScreen({ navigation }) {
     setFilteredTasks(filtered);
   }, [searchQuery, selectedFilters, tasks, applyFilters]);
 
+  // CRITICAL FIX: Only sync notifications when tasks array actually changes
+  // This prevents duplicate notifications
+  useEffect(() => {
+    // Use a debounce to prevent multiple rapid calls
+    const timeoutId = setTimeout(() => {
+      if (tasks.length > 0) {
+        syncAllNotifications();
+      }
+    }, 1000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [tasks, syncAllNotifications]);
+
   useEffect(() => {
     loadCategories();
     requestPermissions();
 
     // Setup listeners
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log("Notification received");
+      console.log("Notification received:", notification.request.content.data);
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      const { taskId } = response.notification.request.content.data;
+      const { taskId, taskTitle } = response.notification.request.content.data;
       if (taskId) {
-        Alert.alert("Task Reminder", "Would you like to view this task?", [
-          { text: "Cancel", style: "cancel" },
-          { text: "View", onPress: () => console.log("View task:", taskId) }
-        ]);
+        Alert.alert(
+          "Task Reminder", 
+          `Would you like to view "${taskTitle || 'this task'}"?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "View", onPress: () => {
+              // You can navigate to task details here
+              console.log("View task:", taskId);
+            }}
+          ]
+        );
       }
     });
 
@@ -241,8 +347,12 @@ export default function HomeScreen({ navigation }) {
     });
 
     return () => {
-      notificationListener.current = null;
-      responseListener.current = null;
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
       subscription.remove();
     };
   }, []);
@@ -300,6 +410,12 @@ export default function HomeScreen({ navigation }) {
     const task = tasks.find((t) => t.id === id);
     const newStatus = task.completed === 1 ? 0 : 1;
     db.runSync("UPDATE tasks SET completed = ? WHERE id = ?", [newStatus, id]);
+    
+    // If task is completed, cancel its notifications
+    if (newStatus === 1) {
+      cancelTaskNotifications(id);
+    }
+    
     loadTasks();
   };
 
@@ -308,13 +424,30 @@ export default function HomeScreen({ navigation }) {
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
-        onPress: () => {
+        onPress: async () => {
+          // Cancel notifications before deleting
+          await cancelTaskNotifications(id);
           db.runSync("DELETE FROM tasks WHERE id = ?", [id]);
           loadTasks();
         },
         style: "destructive",
       },
     ]);
+  };
+
+  const updateTaskReminder = async (taskId, minutes) => {
+    db.runSync("UPDATE tasks SET reminder_minutes = ? WHERE id = ?", [minutes, taskId]);
+    
+    // Update the specific task's notification
+    const updatedTask = tasks.find(t => t.id === taskId);
+    if (updatedTask) {
+      await cancelTaskNotifications(taskId);
+      await scheduleSingleNotification({...updatedTask, reminder_minutes: minutes});
+    }
+    
+    setReminderModalVisible(false);
+    setSelectedTaskForReminder(null);
+    loadTasks();
   };
 
   const onRefresh = () => {
@@ -360,6 +493,11 @@ export default function HomeScreen({ navigation }) {
       hour: "2-digit",
       minute: "2-digit",
     })}`;
+  };
+
+  const getReminderLabel = (minutes) => {
+    const option = REMINDER_OPTIONS.find(opt => opt.value === minutes);
+    return option ? option.label : 'Custom';
   };
 
   // Count active filters
@@ -633,6 +771,23 @@ export default function HomeScreen({ navigation }) {
                       </View>
                     )}
 
+                    {/* Reminder Badge */}
+                    {item.due_date && item.completed === 0 && (
+                      <TouchableOpacity 
+                        style={styles.reminderBadge}
+                        onPress={() => {
+                          setSelectedTaskForReminder(item);
+                          setSelectedReminderMinutes(item.reminder_minutes || 1440);
+                          setReminderModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name="notifications-outline" size={12} color="#A5B4FC" />
+                        <Text style={styles.reminderText}>
+                          {getReminderLabel(item.reminder_minutes || 1440)}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
                     {item.description ? (
                       <Text style={styles.nodeDesc} numberOfLines={1}>
                         {item.description}
@@ -674,7 +829,7 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Filter Modal - FIXED BORDERS */}
+      {/* Filter Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -826,6 +981,67 @@ export default function HomeScreen({ navigation }) {
                 onPress={() => setFilterModalVisible(false)}
               >
                 <Text style={styles.modalApplyText}>Apply Filters</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reminder Settings Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={reminderModalVisible}
+        onRequestClose={() => setReminderModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Set Reminder</Text>
+              <TouchableOpacity onPress={() => setReminderModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#F8FAFC" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.reminderSubtitle}>
+              When would you like to be reminded for "{selectedTaskForReminder?.title}"?
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {REMINDER_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.reminderOption,
+                    selectedReminderMinutes === option.value && styles.reminderOptionSelected
+                  ]}
+                  onPress={() => setSelectedReminderMinutes(option.value)}
+                >
+                  <Text style={[
+                    styles.reminderOptionText,
+                    selectedReminderMinutes === option.value && styles.reminderOptionTextSelected
+                  ]}>
+                    {option.label}
+                  </Text>
+                  {selectedReminderMinutes === option.value && (
+                    <Ionicons name="checkmark-circle" size={20} color="#4F46E5" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity 
+                style={styles.modalClearBtn}
+                onPress={() => setReminderModalVisible(false)}
+              >
+                <Text style={styles.modalClearText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalApplyBtn}
+                onPress={() => updateTaskReminder(selectedTaskForReminder.id, selectedReminderMinutes)}
+              >
+                <Text style={styles.modalApplyText}>Save Reminder</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1136,7 +1352,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
   },
-  // Modal Styles - FIXED
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.95)",
@@ -1148,9 +1364,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 24,
     maxHeight: "80%",
-    width: '100%', // Ensure full width
-    borderWidth: 0, // Remove border completely to avoid cutoff
-    // Alternative if you want border:
+    width: '100%',
     borderTopWidth: 2,
     borderLeftWidth: 0,
     borderRightWidth: 0,
@@ -1245,6 +1459,52 @@ const styles = StyleSheet.create({
   modalApplyText: {
     color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "700",
+  },
+  reminderBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(165, 180, 252, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  reminderText: {
+    color: "#A5B4FC",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  reminderSubtitle: {
+    fontSize: 14,
+    color: "#94A3B8",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  reminderOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(49, 46, 129, 0.7)",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "rgba(165, 180, 252, 0.2)",
+  },
+  reminderOptionSelected: {
+    borderColor: "#4F46E5",
+    backgroundColor: "rgba(79, 70, 229, 0.1)",
+  },
+  reminderOptionText: {
+    color: "#F8FAFC",
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  reminderOptionTextSelected: {
+    color: "#4F46E5",
     fontWeight: "700",
   },
 });
