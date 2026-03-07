@@ -58,7 +58,7 @@ This project demonstrates practical experience in mobile UI engineering, state m
 | Mobile Framework | React Native                    |
 | Runtime          | Expo                            |
 | Navigation       | React Navigation (Native Stack) |
-| Storage          | AsyncStorage                    |
+| Storage          | SQLite                          |
 | Animations       | React Native Animated API       |
 | Icons            | Expo Vector Icons (Ionicons)    |
 | Build System     | EAS Build                       |
