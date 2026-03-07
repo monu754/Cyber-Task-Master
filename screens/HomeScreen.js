@@ -75,6 +75,9 @@ export default function HomeScreen({ navigation }) {
   
   // Categories for filter
   const [categories, setCategories] = useState([]);
+  
+  // Expanded descriptions state
+  const [expandedDescriptions, setExpandedDescriptions] = useState({});
 
   const floatAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -660,6 +663,7 @@ export default function HomeScreen({ navigation }) {
             const priorityColor = getPriorityColor(item.priority);
             const categoryColor = item.category_color || "#6366F1";
             const isOverdue = item.due_date && new Date(item.due_date) < new Date() && item.completed === 0;
+            const isExpanded = expandedDescriptions[item.id] || false;
 
             return (
               <Animated.View
@@ -788,10 +792,29 @@ export default function HomeScreen({ navigation }) {
                       </TouchableOpacity>
                     )}
 
+                    {/* Description with Expand/Collapse */}
                     {item.description ? (
-                      <Text style={styles.nodeDesc} numberOfLines={1}>
-                        {item.description}
-                      </Text>
+                      <View style={styles.descriptionContainer}>
+                        <Text 
+                          style={styles.nodeDesc}
+                          numberOfLines={isExpanded ? undefined : 2}
+                        >
+                          {item.description}
+                        </Text>
+                        {item.description.length > 100 && (
+                          <TouchableOpacity 
+                            onPress={() => setExpandedDescriptions(prev => ({
+                              ...prev,
+                              [item.id]: !prev[item.id]
+                            }))}
+                            style={styles.expandButton}
+                          >
+                            <Text style={styles.expandButtonText}>
+                              {isExpanded ? 'Show less' : 'Read more'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -1506,5 +1529,18 @@ const styles = StyleSheet.create({
   reminderOptionTextSelected: {
     color: "#4F46E5",
     fontWeight: "700",
+  },
+  // New styles for expandable description
+  descriptionContainer: {
+    marginTop: 8,
+  },
+  expandButton: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  expandButtonText: {
+    color: '#818CF8',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
