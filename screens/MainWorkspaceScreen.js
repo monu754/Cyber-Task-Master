@@ -36,6 +36,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   const pageWidth = getPageWidth(width);
   const [activeIndex, setActiveIndex] = useState(0);
   const [plannerTask, setPlannerTask] = useState(null);
+  const [isPagerEnabled, setIsPagerEnabled] = useState(true);
   const [updateState, setUpdateState] = useState({
     isAvailable: false,
     isChecking: false,
@@ -193,66 +194,10 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
           <View style={styles.blobMint} />
         </View>
 
-        {updateState.isAvailable ||
-        updateState.isChecking ||
-        updateState.isDownloading ||
-        updateState.error ||
-        updateState.unsupportedReason ? (
-          <View style={[styles.updateBannerWrap, { top: insets.top + 10 }]}>
-            <BlurView intensity={30} tint="dark" style={styles.updateBannerBlur}>
-              <View style={styles.updateBanner}>
-              <View style={styles.updateBannerIcon}>
-                <Ionicons name="cloud-download-outline" size={18} color="#F8FAFC" />
-              </View>
-              <View style={styles.updateBannerTextWrap}>
-                <Text style={styles.updateBannerTitle}>
-                  {updateState.isAvailable
-                    ? "New update available"
-                    : updateState.isDownloading
-                      ? "Downloading update"
-                      : updateState.unsupportedReason
-                        ? "Updates unavailable"
-                      : updateState.isChecking
-                        ? "Checking for updates"
-                        : "Update status"}
-                </Text>
-                <Text style={styles.updateBannerText}>
-                  {updateState.unsupportedReason ||
-                    updateState.error ||
-                    (updateState.isAvailable
-                      ? "A newer version is ready. Apply it without leaving the app."
-                      : updateState.isDownloading
-                        ? "Please wait while the latest version is prepared."
-                        : "We are checking whether a newer version is available.")}
-                </Text>
-              </View>
-              {updateState.isAvailable ? (
-                <TouchableOpacity
-                  style={styles.updateBannerButton}
-                  activeOpacity={0.88}
-                  onPress={applyAvailableUpdate}
-                >
-                  <Text style={styles.updateBannerButtonText}>
-                    {updateState.isDownloading ? "Applying..." : "Update"}
-                  </Text>
-                </TouchableOpacity>
-              ) : !updateState.isDownloading && !updateState.unsupportedReason ? (
-                <TouchableOpacity
-                  style={styles.updateCheckButton}
-                  activeOpacity={0.88}
-                  onPress={checkForAppUpdates}
-                >
-                  <Ionicons name="refresh-outline" size={16} color="#D7ECFF" />
-                </TouchableOpacity>
-              ) : null}
-              </View>
-            </BlurView>
-          </View>
-        ) : null}
-
         <Animated.ScrollView
           ref={pagerRef}
           horizontal
+          scrollEnabled={isPagerEnabled}
           pagingEnabled
           bounces={false}
           directionalLockEnabled
@@ -271,8 +216,13 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
               onOpenTasks={() => goToIndex(1)}
               onOpenPlanner={() => openPlanner(null, 0)}
               onChangeTheme={onChangeTheme}
+              onApplyUpdate={applyAvailableUpdate}
+              onCheckForUpdates={checkForAppUpdates}
+              onThemeScrollEnd={() => setIsPagerEnabled(true)}
+              onThemeScrollStart={() => setIsPagerEnabled(false)}
               theme={theme}
               themeKey={themeKey}
+              updateState={updateState}
             />
           </View>
 
@@ -381,69 +331,6 @@ const styles = StyleSheet.create({
     left: 18,
     right: 18,
     bottom: 0,
-  },
-  updateBannerWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 20,
-  },
-  updateBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "rgba(15, 118, 110, 0.78)",
-    borderRadius: 22,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(153, 246, 228, 0.26)",
-  },
-  updateBannerBlur: {
-    borderRadius: 22,
-    overflow: "hidden",
-  },
-  updateBannerIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  updateBannerTextWrap: {
-    flex: 1,
-  },
-  updateBannerTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  updateBannerText: {
-    color: "#D7ECFF",
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 3,
-  },
-  updateBannerButton: {
-    minHeight: 38,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: "#F8FAFC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  updateBannerButtonText: {
-    color: "#0F172A",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  updateCheckButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   bottomBar: {
     flexDirection: "row",

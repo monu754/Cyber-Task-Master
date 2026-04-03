@@ -542,7 +542,19 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
         Object.entries(calendarGroups).map(([day, dayTasks]) => (
           <View key={day} style={styles.calendarGroup}>
             <Text style={styles.calendarTitle}>{day}</Text>
-            {dayTasks.map((task) => renderTaskCard({ item: task }))}
+            {dayTasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                item={task}
+                onDelete={onDelete}
+                onEdit={onOpenPlanner}
+                onStartTimer={onStartTimer}
+                onToggleDone={onToggleDone}
+                onUpdateStatus={onUpdateStatus}
+                timerTaskId={activeTimer?.task_id}
+                theme={theme}
+              />
+            ))}
           </View>
         ))
       )}
@@ -576,7 +588,16 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
               <Text style={styles.timelineDate}>
                 {new Date(task.due_date).toLocaleString()}
               </Text>
-              {renderTaskCard({ item: task })}
+              <TaskCard
+                item={task}
+                onDelete={onDelete}
+                onEdit={onOpenPlanner}
+                onStartTimer={onStartTimer}
+                onToggleDone={onToggleDone}
+                onUpdateStatus={onUpdateStatus}
+                timerTaskId={activeTimer?.task_id}
+                theme={theme}
+              />
             </View>
           </View>
         ))

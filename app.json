@@ -42,13 +42,9 @@
       "enabled": true,
       "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/3df29499-fbef-4998-83d5-b29e6fc1f4bb",
-      "requestHeaders": {
-        "expo-channel-name": "production"
-      }
+      "url": "https://u.expo.dev/3df29499-fbef-4998-83d5-b29e6fc1f4bb"
     },
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -67,11 +63,9 @@
       "expo-notifications"
     ],
     "experiments": {
-      "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "3df29499-fbef-4998-83d5-b29e6fc1f4bb"
       }

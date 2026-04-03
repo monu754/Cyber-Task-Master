@@ -47,10 +47,15 @@ export default function HomeScreen({
   isActive,
   bottomInset,
   onChangeTheme,
+  onApplyUpdate,
+  onCheckForUpdates,
   onOpenPlanner,
   onOpenTasks,
+  onThemeScrollEnd,
+  onThemeScrollStart,
   theme,
   themeKey,
+  updateState,
 }) {
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
@@ -226,7 +231,19 @@ export default function HomeScreen({
 
         <View style={styles.card}>
           <SectionHeader title="Theme" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.themeRow}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            directionalLockEnabled
+            showsHorizontalScrollIndicator
+            alwaysBounceHorizontal={false}
+            contentContainerStyle={styles.themeRow}
+            style={styles.themeScroller}
+            onTouchStart={onThemeScrollStart}
+            onTouchEnd={onThemeScrollEnd}
+            onMomentumScrollEnd={onThemeScrollEnd}
+            onScrollEndDrag={onThemeScrollEnd}
+          >
             {Object.values(THEME_OPTIONS).map((item) => (
               <TouchableOpacity
                 key={item.key}
@@ -262,6 +279,46 @@ export default function HomeScreen({
             value={dashboardConfig.showTimeTracking}
             onValueChange={(value) => updateDashboardConfig("showTimeTracking", value)}
           />
+        </View>
+
+        <View style={styles.card}>
+          <SectionHeader
+            title="App updates"
+            action={
+              !updateState?.isAvailable && !updateState?.isDownloading ? (
+                <TouchableOpacity
+                  onPress={onCheckForUpdates}
+                  disabled={updateState?.isChecking}
+                >
+                  <Text style={styles.linkText}>
+                    {updateState?.isChecking ? "Checking..." : "Check now"}
+                  </Text>
+                </TouchableOpacity>
+              ) : null
+            }
+          />
+          <Text style={styles.cardText}>
+            {updateState?.unsupportedReason ||
+              updateState?.error ||
+              (updateState?.isAvailable
+                ? "A newer version is ready to install."
+                : updateState?.isDownloading
+                  ? "Downloading the latest version now."
+                  : updateState?.isChecking
+                    ? "Looking for the latest published build."
+                    : "Tap the button to check for a new app update.")}
+          </Text>
+          {updateState?.isAvailable ? (
+            <TouchableOpacity
+              style={styles.updatePrimaryButton}
+              onPress={onApplyUpdate}
+              disabled={updateState?.isDownloading}
+            >
+              <Text style={styles.updatePrimaryButtonText}>
+                {updateState?.isDownloading ? "Applying update..." : "Update app"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {dashboardConfig.showCompletionStats ? (
@@ -430,13 +487,16 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
   cardText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21 },
-  themeRow: { gap: 10, paddingRight: 18 },
+  themeScroller: { marginHorizontal: -2 },
+  themeRow: { gap: 10, paddingRight: 28, paddingVertical: 2 },
   themeChip: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 0,
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    minWidth: 112,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
@@ -464,6 +524,15 @@ const styles = StyleSheet.create({
   chartBar: { width: "100%", borderRadius: 999 },
   chartLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "700" },
   linkText: { color: "#7DD3FC", fontSize: 13, fontWeight: "700" },
+  updatePrimaryButton: {
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  updatePrimaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   taskCard: {
     borderWidth: 1,
     borderRadius: 18,

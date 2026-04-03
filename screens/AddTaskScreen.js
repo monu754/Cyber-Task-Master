@@ -115,6 +115,7 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const [hasDeadline, setHasDeadline] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState("date");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!isActive) {
@@ -198,6 +199,22 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const themeText = theme?.text || "#F8FAFC";
   const themeMuted = theme?.muted || "#94A3B8";
 
+  useEffect(() => {
+    if (!isActive || newProject.trim()) {
+      return;
+    }
+
+    if (availableProjects.length === 0) {
+      setProjectId(1);
+      return;
+    }
+
+    const hasSelectedProject = availableProjects.some((project) => project.id === projectId);
+    if (!hasSelectedProject) {
+      setProjectId(availableProjects[0].id);
+    }
+  }, [availableProjects, isActive, newProject, projectId]);
+
   const onChangeDateTime = (_, selectedDate) => {
     setShowPicker(false);
     if (!selectedDate) {
@@ -214,50 +231,72 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   };
 
   const handleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+
     if (title.trim().length < 3) {
       Alert.alert("Task title required", "Please enter at least 3 characters.");
       return;
     }
 
-    const category = newCategory.trim()
-      ? ensureCategory({ name: newCategory.trim() })
-      : categories.find((item) => item.id === categoryId);
-    const workspace = newWorkspace.trim()
-      ? ensureWorkspace({ name: newWorkspace.trim() })
-      : workspaces.find((item) => item.id === workspaceId);
-    const project = newProject.trim()
-      ? ensureProject({ name: newProject.trim(), workspaceId: workspace?.id || 1 })
-      : availableProjects.find((item) => item.id === projectId);
+    setIsSaving(true);
 
-    const payload = {
-      title: title.trim(),
-      description: description.trim(),
-      status,
-      priority,
-      categoryId: category?.id || 1,
-      workspaceId: workspace?.id || 1,
-      projectId: project?.id || 1,
-      dueDate: hasDeadline ? date.toISOString() : null,
-      reminderMinutes,
-      recurrence,
-      estimatedMinutes: Number(estimatedMinutes) || 0,
-      tags: parseList(tagText).map((name) => ({ name })),
-      dependencyIds,
-      subtasks: parseList(subtaskText, "\n").map((name) => ({ name })),
-      attachments: parseAttachments(attachmentText),
-    };
+    try {
+      const category = newCategory.trim()
+        ? ensureCategory({ name: newCategory.trim() })
+        : categories.find((item) => item.id === categoryId);
+      const workspace = newWorkspace.trim()
+        ? ensureWorkspace({ name: newWorkspace.trim() })
+        : workspaces.find((item) => item.id === workspaceId);
+      const resolvedWorkspaceId = workspace?.id || 1;
 
-    const savedTask = taskToEdit
-      ? updateTask({ id: taskToEdit.id, ...payload })
-      : createTask(payload);
+      let project = null;
+      if (newProject.trim()) {
+        project = ensureProject({ name: newProject.trim(), workspaceId: resolvedWorkspaceId });
+      } else {
+        project = availableProjects.find((item) => item.id === projectId) || null;
+      }
 
-    if (taskToEdit) {
-      await cancelTaskNotifications(taskToEdit.id);
+      if (!project) {
+        project = ensureProject({ name: "General", workspaceId: resolvedWorkspaceId });
+      }
+
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+        status,
+        priority,
+        categoryId: category?.id || 1,
+        workspaceId: resolvedWorkspaceId,
+        projectId: project.id,
+        dueDate: hasDeadline ? date.toISOString() : null,
+        reminderMinutes,
+        recurrence,
+        estimatedMinutes: Number(estimatedMinutes) || 0,
+        tags: parseList(tagText).map((name) => ({ name })),
+        dependencyIds,
+        subtasks: parseList(subtaskText, "\n").map((name) => ({ name })),
+        attachments: parseAttachments(attachmentText),
+      };
+
+      const savedTask = taskToEdit
+        ? updateTask({ id: taskToEdit.id, ...payload })
+        : createTask(payload);
+
+      if (taskToEdit) {
+        await cancelTaskNotifications(taskToEdit.id);
+      }
+      if (savedTask?.due_date && savedTask.status !== "Done") {
+        await scheduleSingleNotification({ ...savedTask, completed: 0 });
+      }
+      onSaved?.();
+    } catch (error) {
+      console.error("Failed to save task:", error);
+      Alert.alert("Unable to save task", "Something went wrong while saving. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
-    if (savedTask?.due_date && savedTask.status !== "Done") {
-      await scheduleSingleNotification({ ...savedTask, completed: 0 });
-    }
-    onSaved?.();
   };
 
   return (
@@ -520,8 +559,11 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: themeAccent }]}
               onPress={handleSave}
+              disabled={isSaving}
             >
-              <Text style={styles.primaryText}>{taskToEdit ? "Update task" : "Save task"}</Text>
+              <Text style={styles.primaryText}>
+                {isSaving ? "Saving..." : taskToEdit ? "Update task" : "Save task"}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
