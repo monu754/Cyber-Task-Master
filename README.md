@@ -218,18 +218,3 @@ npm start
 ```bash
 npm run android
 ```
-
-## Current limitations
-
-- No backend service is included
-- No multi-device sync is included
-- Attachments are stored as local metadata references, not full native file upload flows
-- Redis caching is not implemented because this repository is local-only
-
-## Development status
-
-This repository currently contains a feature-rich local mobile app rather than a backend-connected production SaaS platform. The codebase is strongest as:
-
-- an offline-first mobile task manager
-- a UI/UX and local persistence project
-- a base for future backend sync, auth, and collaboration features
