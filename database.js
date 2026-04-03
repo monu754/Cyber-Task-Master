@@ -166,20 +166,9 @@ const attachTaskRelations = (tasks) => {
     `,
     taskIds,
   );
-  const attachmentRows = db.getAllSync(
-    `
-      SELECT id, task_id, name, uri, type
-      FROM task_attachments
-      WHERE task_id IN (${placeholders})
-      ORDER BY id ASC
-    `,
-    taskIds,
-  );
-
   const tagsByTask = createLookupMap(tagRows, "task_id");
   const dependenciesByTask = createLookupMap(dependencyRows, "task_id");
   const subtasksByTask = createLookupMap(subtaskRows, "task_id");
-  const attachmentsByTask = createLookupMap(attachmentRows, "task_id");
 
   return tasks.map((task) => ({
     ...task,
@@ -187,12 +176,10 @@ const attachTaskRelations = (tasks) => {
     tags: tagsByTask[task.id] || [],
     dependencies: dependenciesByTask[task.id] || [],
     subtasks: subtasksByTask[task.id] || [],
-    attachments: attachmentsByTask[task.id] || [],
     hasBlockingDependency: (dependenciesByTask[task.id] || []).some(
       (dependency) => dependency.depends_on_status !== "Done",
     ),
     tracked_minutes: task.tracked_minutes || 0,
-    attachment_count: (attachmentsByTask[task.id] || []).length,
     subtask_count: (subtasksByTask[task.id] || []).length,
   }));
 };
@@ -236,22 +223,10 @@ const saveSubtasks = (taskId, subtasks) => {
   });
 };
 
-const saveAttachments = (taskId, attachments) => {
-  db.runSync("DELETE FROM task_attachments WHERE task_id = ?", [taskId]);
-
-  sanitizeList(attachments).forEach((attachment) => {
-    db.runSync(
-      "INSERT INTO task_attachments (task_id, name, uri, type) VALUES (?, ?, ?, ?)",
-      [taskId, attachment.name, attachment.uri || "", attachment.type || "link"],
-    );
-  });
-};
-
 const saveTaskRelations = (taskId, payload) => {
   saveTaskTags(taskId, payload.tags);
   saveTaskDependencies(taskId, payload.dependencyIds);
   saveSubtasks(taskId, payload.subtasks);
-  saveAttachments(taskId, payload.attachments);
 };
 
 export const initDatabase = () => {
@@ -338,15 +313,6 @@ export const initDatabase = () => {
       FOREIGN KEY (depends_on_task_id) REFERENCES tasks (id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS task_attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      uri TEXT,
-      type TEXT DEFAULT 'link',
-      FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
-    );
-
     CREATE TABLE IF NOT EXISTS time_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       task_id INTEGER NOT NULL,
@@ -356,6 +322,8 @@ export const initDatabase = () => {
       FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
     );
   `);
+
+  db.execSync("DROP TABLE IF EXISTS task_attachments;");
 
   ensureTaskColumns();
   normalizeTaskStatus();
@@ -524,7 +492,6 @@ export const createTask = ({
   tags = [],
   dependencyIds = [],
   subtasks = [],
-  attachments = [],
 }) => {
   const now = new Date().toISOString();
   const completed = status === "Done" ? 1 : 0;
@@ -553,7 +520,7 @@ export const createTask = ({
     ],
   );
 
-  saveTaskRelations(result.lastInsertRowId, { tags, dependencyIds, subtasks, attachments });
+  saveTaskRelations(result.lastInsertRowId, { tags, dependencyIds, subtasks });
   return getTaskById(result.lastInsertRowId);
 };
 
@@ -573,7 +540,6 @@ export const updateTask = ({
   tags = [],
   dependencyIds = [],
   subtasks = [],
-  attachments = [],
 }) => {
   db.runSync(
     `
@@ -601,7 +567,7 @@ export const updateTask = ({
     ],
   );
 
-  saveTaskRelations(id, { tags, dependencyIds, subtasks, attachments });
+  saveTaskRelations(id, { tags, dependencyIds, subtasks });
   return getTaskById(id);
 };
 
@@ -659,7 +625,6 @@ export const completeTaskAndGenerateNext = (taskId) => {
     tags: task.tags,
     dependencyIds: [],
     subtasks: task.subtasks.map((subtask) => ({ name: subtask.title })),
-    attachments: task.attachments,
   });
 
   return { nextTask, task: completedTask };

@@ -158,6 +158,37 @@ export default function HomeScreen({
         contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
+        {updateState?.isAvailable ? (
+          <LinearGradient
+            colors={[theme?.accent || "#2563EB", "#0F172A"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.updateBanner}
+          >
+            <View style={styles.updateBannerContent}>
+              <Text style={styles.updateBannerEyebrow}>Update available</Text>
+              <Text style={styles.updateBannerTitle}>A newer app version is ready to install.</Text>
+              <Text style={styles.updateBannerText}>
+                {updateState?.isDownloading
+                  ? "Downloading the latest release now."
+                  : "Install the latest update to get the newest fixes and improvements."}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.updateBannerButton,
+                updateState?.isDownloading && styles.updateBannerButtonDisabled,
+              ]}
+              onPress={onApplyUpdate}
+              disabled={updateState?.isDownloading}
+            >
+              <Text style={styles.updateBannerButtonText}>
+                {updateState?.isDownloading ? "Applying..." : "Update app"}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        ) : null}
+
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>
@@ -281,46 +312,6 @@ export default function HomeScreen({
           />
         </View>
 
-        <View style={styles.card}>
-          <SectionHeader
-            title="App updates"
-            action={
-              !updateState?.isAvailable && !updateState?.isDownloading ? (
-                <TouchableOpacity
-                  onPress={onCheckForUpdates}
-                  disabled={updateState?.isChecking}
-                >
-                  <Text style={styles.linkText}>
-                    {updateState?.isChecking ? "Checking..." : "Check now"}
-                  </Text>
-                </TouchableOpacity>
-              ) : null
-            }
-          />
-          <Text style={styles.cardText}>
-            {updateState?.unsupportedReason ||
-              updateState?.error ||
-              (updateState?.isAvailable
-                ? "A newer version is ready to install."
-                : updateState?.isDownloading
-                  ? "Downloading the latest version now."
-                  : updateState?.isChecking
-                    ? "Looking for the latest published build."
-                    : "Tap the button to check for a new app update.")}
-          </Text>
-          {updateState?.isAvailable ? (
-            <TouchableOpacity
-              style={styles.updatePrimaryButton}
-              onPress={onApplyUpdate}
-              disabled={updateState?.isDownloading}
-            >
-              <Text style={styles.updatePrimaryButtonText}>
-                {updateState?.isDownloading ? "Applying update..." : "Update app"}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
         {dashboardConfig.showCompletionStats ? (
           <View style={styles.card}>
             <SectionHeader title="Task completion stats" />
@@ -363,6 +354,49 @@ export default function HomeScreen({
             </Text>
           </View>
         ) : null}
+
+        <View style={styles.card}>
+          <SectionHeader title="App updates" />
+          <Text style={styles.cardText}>
+            {updateState?.unsupportedReason ||
+              updateState?.error ||
+              (updateState?.isAvailable
+                ? "A newer version is ready to install."
+                : updateState?.isDownloading
+                  ? "Downloading the latest version now."
+                  : updateState?.isChecking
+                    ? "Looking for the latest published build."
+                    : "The app checks for updates automatically when it opens. You can also run a manual check here anytime.")}
+          </Text>
+          <View style={styles.updateActionsRow}>
+            <TouchableOpacity
+              style={[
+                styles.updateSecondaryButton,
+                updateState?.isChecking && styles.updateSecondaryButtonDisabled,
+              ]}
+              onPress={onCheckForUpdates}
+              disabled={updateState?.isChecking}
+            >
+              <Text style={styles.updateSecondaryButtonText}>
+                {updateState?.isChecking ? "Checking..." : "Check for update"}
+              </Text>
+            </TouchableOpacity>
+            {updateState?.isAvailable ? (
+              <TouchableOpacity
+                style={[
+                  styles.updatePrimaryButton,
+                  updateState?.isDownloading && styles.updatePrimaryButtonDisabled,
+                ]}
+                onPress={onApplyUpdate}
+                disabled={updateState?.isDownloading}
+              >
+                <Text style={styles.updatePrimaryButtonText}>
+                  {updateState?.isDownloading ? "Applying..." : "Update app"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -429,6 +463,39 @@ const styles = StyleSheet.create({
   },
   scoreValue: { color: "#F8FAFC", fontSize: 22, fontWeight: "900" },
   scoreLabel: { color: "#8FA5BF", fontSize: 12, fontWeight: "700", marginTop: 2 },
+  updateBanner: {
+    borderRadius: 28,
+    padding: 20,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: "rgba(125, 211, 252, 0.28)",
+    shadowColor: "#020617",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  updateBannerContent: { gap: 6 },
+  updateBannerEyebrow: {
+    color: "#BFDBFE",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+  },
+  updateBannerTitle: { color: "#F8FAFC", fontSize: 20, lineHeight: 28, fontWeight: "900" },
+  updateBannerText: { color: "rgba(226, 232, 240, 0.92)", fontSize: 14, lineHeight: 21 },
+  updateBannerButton: {
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  updateBannerButtonDisabled: {
+    opacity: 0.7,
+  },
+  updateBannerButtonText: { color: "#0B172A", fontSize: 15, fontWeight: "900" },
   heroCard: { borderRadius: 30, padding: 22, gap: 14 },
   heroDate: {
     color: "#E0E7FF",
@@ -524,14 +591,36 @@ const styles = StyleSheet.create({
   chartBar: { width: "100%", borderRadius: 999 },
   chartLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "700" },
   linkText: { color: "#7DD3FC", fontSize: 13, fontWeight: "700" },
+  updateActionsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 4,
+  },
+  updateSecondaryButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(125, 211, 252, 0.3)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  updateSecondaryButtonDisabled: {
+    opacity: 0.7,
+  },
+  updateSecondaryButtonText: { color: "#E0F2FE", fontSize: 14, fontWeight: "800" },
   updatePrimaryButton: {
+    flex: 1,
     minHeight: 48,
     borderRadius: 16,
     backgroundColor: "#2563EB",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 4,
+    paddingHorizontal: 14,
   },
+  updatePrimaryButtonDisabled: { opacity: 0.7 },
   updatePrimaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   taskCard: {
     borderWidth: 1,

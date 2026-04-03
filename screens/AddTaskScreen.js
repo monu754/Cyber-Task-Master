@@ -43,16 +43,6 @@ const parseList = (value, separator = ",") =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-const parseAttachments = (value) =>
-  value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [name, uri = "", type = "link"] = line.split("|").map((part) => part.trim());
-      return { name, uri, type };
-    });
-
 function Chip({ label, onPress, selected }) {
   return (
     <TouchableOpacity style={[styles.chip, selected && styles.chipActive]} onPress={onPress}>
@@ -106,7 +96,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const [newProject, setNewProject] = useState("");
   const [tagText, setTagText] = useState("");
   const [subtaskText, setSubtaskText] = useState("");
-  const [attachmentText, setAttachmentText] = useState("");
   const [dependencyIds, setDependencyIds] = useState([]);
   const [estimatedMinutes, setEstimatedMinutes] = useState("30");
   const [recurrence, setRecurrence] = useState("none");
@@ -144,11 +133,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
       setProjectId(taskToEdit.project_id || 1);
       setTagText((taskToEdit.tags || []).map((tag) => tag.name).join(", "));
       setSubtaskText((taskToEdit.subtasks || []).map((subtask) => subtask.title).join("\n"));
-      setAttachmentText(
-        (taskToEdit.attachments || [])
-          .map((attachment) => [attachment.name, attachment.uri, attachment.type].join("|"))
-          .join("\n"),
-      );
       setDependencyIds((taskToEdit.dependencies || []).map((item) => item.depends_on_task_id));
       setEstimatedMinutes(String(taskToEdit.estimated_minutes || 30));
       setRecurrence(taskToEdit.recurrence || "none");
@@ -178,7 +162,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     setNewProject("");
     setTagText("");
     setSubtaskText("");
-    setAttachmentText("");
     setDependencyIds([]);
     setEstimatedMinutes("30");
     setRecurrence("none");
@@ -277,7 +260,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
         tags: parseList(tagText).map((name) => ({ name })),
         dependencyIds,
         subtasks: parseList(subtaskText, "\n").map((name) => ({ name })),
-        attachments: parseAttachments(attachmentText),
       };
 
       const savedTask = taskToEdit
@@ -525,18 +507,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                   />
                 ))}
               </ChipRow>
-            </Section>
-
-            <Section title="Attachments" help="Optional. Add one item per line in the format name|path-or-url|type.">
-              <TextInput
-                style={[styles.input, styles.multiInput]}
-                multiline
-                textAlignVertical="top"
-                placeholder={"Spec|https://example.com/spec|link\nMockup|/download/mock.png|image"}
-                placeholderTextColor="#64748B"
-                value={attachmentText}
-                onChangeText={setAttachmentText}
-              />
             </Section>
 
             <Section title="Notes" help="Anything helpful you want to remember later.">

@@ -1,17 +1,27 @@
 # TaskManagerApp
 
-TaskManagerApp is an offline-first task management app built with Expo, React Native, and SQLite. It is designed as a mobile-first productivity app with local persistence, multiple task views, reminders, recurring tasks, time tracking, and dashboard insights.
+TaskManagerApp is an offline-first task manager built with Expo, React Native, and SQLite. It is designed for mobile-first personal productivity, with local data storage, reminders, recurring tasks, multiple task views, time tracking, and dashboard insights.
 
-## What the app currently does
+## Overview
 
-### Core task management
+- Offline-first local task management
+- SQLite-backed persistence
+- Dashboard, task library, and task planner flows
+- Reminders with Expo Notifications
+- Recurring tasks, subtasks, dependencies, and tags
+- Time tracking and weekly productivity insights
+- In-app update checks with Expo Updates
 
-- Create, edit, update status, and delete tasks
-- Title, notes/description, due date, reminder, and estimated time
-- Priority support: `Low`, `Medium`, `High`
-- Status support: `Todo`, `In Progress`, `Done`
-- Recurring task rules: `none`, `daily`, `weekly`
-- Attachment metadata entries stored locally as `name | path-or-url | type`
+## Features
+
+### Task management
+
+- Create, edit, complete, and delete tasks
+- Set title, notes, due date, reminder, priority, and estimated time
+- Track task status with `Todo`, `In Progress`, and `Done`
+- Support recurring rules with `none`, `daily`, and `weekly`
+- Break tasks into subtasks
+- Link task dependencies
 
 ### Organization
 
@@ -19,171 +29,133 @@ TaskManagerApp is an offline-first task management app built with Expo, React Na
 - Workspaces
 - Projects
 - Tags
-- Subtasks
-- Task dependencies
+- Saved filter presets
 
 ### Views
 
-- List view
+- Dashboard view
+- Task list view
 - Board view grouped by status
 - Calendar-style grouped view by due date
-- Timeline view sorted by upcoming schedule
+- Timeline view for scheduled work
 
-### Productivity features
+### Productivity
 
-- Reminder scheduling through Expo Notifications
-- Time tracking with active timer state
+- Local notifications for reminders
+- Active task timer
 - Completion stats
 - Weekly performance summary
-- Burn-down style trend data
-- Saved filters
+- Burn-down trend data
 - Dashboard customization toggles
 - Theme switching
 
-## Current architecture
-
-The app is fully local-first.
-
-- App shell and screen state are handled in React Native
-- Data is stored in a local SQLite database
-- Some UI preferences and saved filters are stored with AsyncStorage
-- Notifications are scheduled locally on-device
-- There is no backend API in this repository
-- Redis is not part of the current architecture
-
-## Project structure
-
-```text
-TaskManagerApp/
-├── App.js
-├── app.json
-├── database.js
-├── package.json
-├── screens/
-│   ├── AddTaskScreen.js
-│   ├── HomeScreen.js
-│   ├── MainWorkspaceScreen.js
-│   └── TasksScreen.js
-├── utils/
-│   ├── analytics.js
-│   ├── preferences.js
-│   └── taskNotifications.js
-├── scripts/
-│   ├── reset-project.js
-│   └── run-android.js
-├── navigation/
-│   └── StackNavigator.js
-├── components/
-├── hooks/
-├── constants/
-└── assets/
-```
-
-## Important files
-
-### `App.js`
-
-- Initializes the local database
-- Loads the current theme preference
-- Mounts the main workspace shell
-
-### `database.js`
-
-This is the main local data layer.
-
-It defines and manages:
-
-- `categories`
-- `workspaces`
-- `projects`
-- `tags`
-- `preferences`
-- `tasks`
-- `subtasks`
-- `task_tags`
-- `task_dependencies`
-- `task_attachments`
-- `time_entries`
-
-It also exposes helpers for:
-
-- task CRUD
-- recurrence handling
-- timer start/stop
-- dashboard insights
-- theme preference storage
-- category / workspace / project creation
-
-### `screens/MainWorkspaceScreen.js`
-
-- Hosts the three main app areas:
-  - Dashboard
-  - Tasks
-  - Planner
-- Contains the custom bottom navigation
-- Handles in-app update checking
-
-### `screens/HomeScreen.js`
-
-- Dashboard screen
-- Shows next due task
-- Shows completion metrics, weekly summaries, burndown trend, and time tracking summaries
-- Supports theme switching and dashboard customization
-
-### `screens/TasksScreen.js`
-
-- Main task library
-- Search
-- Saved filters
-- View tabs for list / board / calendar / timeline
-- Filter popup
-- Task actions for edit, status changes, timer start/stop, and delete
-
-### `screens/AddTaskScreen.js`
-
-- Create and edit task form
-- Designed for clearer, beginner-friendly input
-- Supports categories, workspaces, projects, priorities, reminders, recurring tasks, tags, subtasks, dependencies, attachments, and notes
-
-### `utils/taskNotifications.js`
-
-- Requests notification permissions
-- Normalizes reminder values
-- Schedules, cancels, and syncs task reminders
-
-### `utils/preferences.js`
-
-- Theme definitions
-- Dashboard widget preferences
-- Saved filter persistence
-
-### `utils/analytics.js`
-
-- Formats tracked time
-- Builds chart-ready data for weekly stats and burndown trends
-
-### `scripts/run-android.js`
-
-Custom Android runner that:
-
-- starts an emulator if needed
-- waits for boot completion
-- prepares the device for APK installation
-- runs Expo Android builds with a smoother fallback flow
-
-## Tech stack
+## Tech Stack
 
 - React Native
 - Expo
 - Expo SQLite
 - Expo Notifications
+- Expo Updates
 - Expo Blur
 - Expo Linear Gradient
 - React 19
-- React Native Safe Area Context
 - AsyncStorage
 
-## Available scripts
+## Project Structure
+
+```text
+TaskManagerApp/
+|-- App.js
+|-- app.json
+|-- database.js
+|-- package.json
+|-- screens/
+|   |-- AddTaskScreen.js
+|   |-- HomeScreen.js
+|   |-- MainWorkspaceScreen.js
+|   `-- TasksScreen.js
+|-- utils/
+|   |-- analytics.js
+|   |-- preferences.js
+|   `-- taskNotifications.js
+|-- scripts/
+|   |-- reset-project.js
+|   `-- run-android.js
+|-- navigation/
+|   `-- StackNavigator.js
+|-- components/
+|-- hooks/
+|-- constants/
+`-- assets/
+```
+
+## Key Files
+
+### `App.js`
+
+- Initializes the database
+- Loads the saved theme
+- Mounts the main workspace shell
+
+### `database.js`
+
+Main local data layer for:
+
+- tasks
+- categories
+- workspaces
+- projects
+- tags
+- subtasks
+- task dependencies
+- preferences
+- time entries
+
+It also contains task CRUD, timer helpers, recurrence handling, and dashboard insight queries.
+
+### `screens/MainWorkspaceScreen.js`
+
+- Hosts the main app shell
+- Manages dashboard, tasks, and planner tabs
+- Handles app update checking and update actions
+
+### `screens/HomeScreen.js`
+
+- Dashboard UI
+- Shows progress summaries and the next due task
+- Contains dashboard customization controls
+- Displays update availability state
+
+### `screens/TasksScreen.js`
+
+- Task library
+- Search and filters
+- Multiple task views
+- Edit, timer, status, and delete actions
+
+### `screens/AddTaskScreen.js`
+
+- Task creation and editing form
+- Supports reminders, recurrence, subtasks, dependencies, tags, notes, and project/workspace selection
+
+## How Data Works
+
+The app is fully local-first.
+
+- Task data is stored in SQLite
+- Theme preferences and saved filters are stored locally
+- Notifications are scheduled on-device
+- There is no backend API in this repository
+
+## Updates
+
+The app is configured to use Expo Updates.
+
+- Automatic checking is handled inside the app when it opens
+- A banner appears when an update is available
+- Users can also manually check for updates from the dashboard
+
+## Available Scripts
 
 ```bash
 npm start
@@ -192,14 +164,10 @@ npm run android:raw
 npm run ios
 npm run web
 npm run lint
+npm run reset-project
 ```
 
-### Notes
-
-- `npm run android` uses the custom launcher in `scripts/run-android.js`
-- `npm run android:raw` runs plain `expo run:android`
-
-## Setup
+## Local Setup
 
 ### 1. Install dependencies
 
@@ -207,7 +175,7 @@ npm run lint
 npm install
 ```
 
-### 2. Start Expo
+### 2. Start the Expo dev server
 
 ```bash
 npm start
@@ -218,3 +186,15 @@ npm start
 ```bash
 npm run android
 ```
+
+### 4. Run lint
+
+```bash
+npm run lint
+```
+
+## Notes
+
+- `npm run android` uses the custom launcher in `scripts/run-android.js`
+- `npm run android:raw` runs plain `expo run:android`
+- In-app updates are best tested in preview or production builds, not local dev mode
