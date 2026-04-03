@@ -181,6 +181,11 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const themeAccent = theme?.accent || "#2563EB";
   const themeText = theme?.text || "#F8FAFC";
   const themeMuted = theme?.muted || "#94A3B8";
+  const minimumDate = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  }, []);
 
   useEffect(() => {
     if (!isActive || newProject.trim()) {
@@ -203,11 +208,19 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     if (!selectedDate) {
       return;
     }
+
+    const now = new Date();
     const nextDate = new Date(date);
     if (pickerMode === "date") {
       nextDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     } else {
       nextDate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+
+      const isToday = nextDate.toDateString() === now.toDateString();
+      if (isToday && nextDate < now) {
+        Alert.alert("Invalid time", "Please choose a future time for today's deadline.");
+        return;
+      }
     }
     setDate(nextDate);
     setHasDeadline(true);
@@ -220,6 +233,11 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
 
     if (title.trim().length < 3) {
       Alert.alert("Task title required", "Please enter at least 3 characters.");
+      return;
+    }
+
+    if (hasDeadline && date < new Date()) {
+      Alert.alert("Invalid deadline", "Please choose a future date and time.");
       return;
     }
 
@@ -301,7 +319,7 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
           </View>
 
           <View style={[styles.card, { backgroundColor: theme?.panel || "rgba(15, 23, 42, 0.76)" }]}>
-            <Section title="Task name" help="Use a short action like 'Submit report' or 'Call Rahul'.">
+            <Section title="Task name *" help="Use a short action like 'Submit report' or 'Call Rahul'.">
               <TextInput
                 style={styles.input}
                 placeholder="What needs to get done?"
@@ -422,7 +440,13 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                 </TouchableOpacity>
               </View>
               {showPicker ? (
-                <DateTimePicker value={date} mode={pickerMode} display="default" onChange={onChangeDateTime} />
+                <DateTimePicker
+                  value={date}
+                  mode={pickerMode}
+                  display="default"
+                  minimumDate={pickerMode === "date" ? minimumDate : undefined}
+                  onChange={onChangeDateTime}
+                />
               ) : null}
             </Section>
 
