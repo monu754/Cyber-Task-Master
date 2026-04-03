@@ -5,6 +5,7 @@ import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
 import { initDatabase } from "./database";
 import AddTaskScreen from "./screens/AddTaskScreen";
 import HomeScreen from "./screens/HomeScreen";
+import TasksScreen from "./screens/TasksScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -39,6 +40,7 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Tasks" component={TasksScreen} />
         <Stack.Screen name="AddTask" component={AddTaskScreen} />
       </Stack.Navigator>
     </NavigationContainer>
