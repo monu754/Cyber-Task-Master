@@ -18,10 +18,12 @@ import { THEME_OPTIONS } from "../utils/preferences";
 import AddTaskScreen from "./AddTaskScreen";
 import HomeScreen from "./HomeScreen";
 import TasksScreen from "./TasksScreen";
+import ThemeScreen from "./ThemeScreen";
 
 const TABS = [
   { key: "home", label: "Dashboard", icon: "home-outline", activeIcon: "home" },
   { key: "tasks", label: "Tasks", icon: "albums-outline", activeIcon: "albums" },
+  { key: "themes", label: "Themes", icon: "color-palette-outline", activeIcon: "color-palette" },
   { key: "planner", label: "Planner", icon: "add-circle-outline", activeIcon: "add-circle" },
 ];
 
@@ -36,7 +38,6 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   const pageWidth = getPageWidth(width);
   const [activeIndex, setActiveIndex] = useState(0);
   const [plannerTask, setPlannerTask] = useState(null);
-  const [isPagerEnabled, setIsPagerEnabled] = useState(true);
   const [updateState, setUpdateState] = useState({
     isAvailable: false,
     isChecking: false,
@@ -154,14 +155,14 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
     (task = null, sourceIndex = activeIndex) => {
       previousIndexRef.current = sourceIndex;
       setPlannerTask(task);
-      goToIndex(2);
+      goToIndex(3);
     },
     [activeIndex, goToIndex],
   );
 
   const handlePlannerCancel = useCallback(() => {
     setPlannerTask(null);
-    goToIndex(previousIndexRef.current === 2 ? 0 : previousIndexRef.current);
+    goToIndex(previousIndexRef.current === 3 ? 0 : previousIndexRef.current);
   }, [goToIndex]);
 
   const handlePlannerSaved = useCallback(() => {
@@ -176,7 +177,13 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
         return {
           ...tab,
           shortLabel:
-            tab.key === "home" ? "Home" : tab.key === "planner" ? "Plan" : tab.label,
+            tab.key === "home"
+              ? "Home"
+              : tab.key === "planner"
+                ? "Plan"
+                : tab.key === "themes"
+                  ? "Theme"
+                  : tab.label,
           index,
           isActive,
           iconName: isActive ? tab.activeIcon : tab.icon,
@@ -197,7 +204,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
         <Animated.ScrollView
           ref={pagerRef}
           horizontal
-          scrollEnabled={isPagerEnabled}
+          scrollEnabled
           pagingEnabled
           bounces={false}
           directionalLockEnabled
@@ -215,13 +222,10 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
               bottomInset={bottomInset}
               onOpenTasks={() => goToIndex(1)}
               onOpenPlanner={() => openPlanner(null, 0)}
-              onChangeTheme={onChangeTheme}
+              onOpenThemes={() => goToIndex(2)}
               onApplyUpdate={applyAvailableUpdate}
               onCheckForUpdates={checkForAppUpdates}
-              onThemeScrollEnd={() => setIsPagerEnabled(true)}
-              onThemeScrollStart={() => setIsPagerEnabled(false)}
               theme={theme}
-              themeKey={themeKey}
               updateState={updateState}
             />
           </View>
@@ -236,8 +240,18 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
           </View>
 
           <View style={[styles.page, { width: pageWidth }]}>
-            <AddTaskScreen
+            <ThemeScreen
               isActive={activeIndex === 2}
+              bottomInset={bottomInset}
+              onChangeTheme={onChangeTheme}
+              theme={theme}
+              themeKey={themeKey}
+            />
+          </View>
+
+          <View style={[styles.page, { width: pageWidth }]}>
+            <AddTaskScreen
+              isActive={activeIndex === 3}
               bottomInset={bottomInset}
               taskToEdit={plannerTask}
               onCancel={handlePlannerCancel}
@@ -256,12 +270,12 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                 style={[styles.navButton, item.isActive && styles.navButtonActive]}
                 activeOpacity={0.9}
                 onPress={() => {
-                  if (item.index === 2 && activeIndex !== 2) {
+                  if (item.index === 3 && activeIndex !== 3) {
                     openPlanner(null, activeIndex);
                     return;
                   }
 
-                  if (item.index !== 2) {
+                  if (item.index !== 3) {
                     setPlannerTask(null);
                   }
 
@@ -269,7 +283,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                 }}
               >
                 <View style={[styles.iconWrap, item.isActive && styles.iconWrapActive]}>
-                  <Ionicons name={item.iconName} size={item.index === 2 ? 22 : 18} color="#F8FAFC" />
+                  <Ionicons name={item.iconName} size={item.index === 3 ? 22 : 18} color="#F8FAFC" />
                 </View>
                 <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
                   {isCompact ? item.shortLabel : item.label}

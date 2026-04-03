@@ -1,7 +1,5 @@
-import * as Notifications from "expo-notifications";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   AppState,
   ScrollView,
   StatusBar,
@@ -20,7 +18,6 @@ import {
   DEFAULT_DASHBOARD_CONFIG,
   loadDashboardConfig,
   saveDashboardConfig,
-  THEME_OPTIONS,
 } from "../utils/preferences";
 import { requestNotificationPermissions, syncTaskNotifications } from "../utils/taskNotifications";
 
@@ -46,15 +43,12 @@ function MiniBars({ color, data }) {
 export default function HomeScreen({
   isActive,
   bottomInset,
-  onChangeTheme,
   onApplyUpdate,
   onCheckForUpdates,
+  onOpenThemes,
   onOpenPlanner,
   onOpenTasks,
-  onThemeScrollEnd,
-  onThemeScrollStart,
   theme,
-  themeKey,
   updateState,
 }) {
   const { width } = useWindowDimensions();
@@ -63,8 +57,6 @@ export default function HomeScreen({
   const [insights, setInsights] = useState(null);
   const [dashboardConfig, setDashboardConfig] = useState(DEFAULT_DASHBOARD_CONFIG);
   const [activeTimer, setActiveTimer] = useState(null);
-  const notificationListener = useRef();
-  const responseListener = useRef();
 
   const loadHomeData = useCallback(async () => {
     const allTasks = getTasksWithDetails();
@@ -78,15 +70,6 @@ export default function HomeScreen({
     requestNotificationPermissions();
     loadHomeData();
 
-    notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      const { taskTitle } = response.notification.request.content.data;
-      Alert.alert("Task Reminder", `Reminder received for "${taskTitle || "your task"}".`, [
-        { text: "Later", style: "cancel" },
-        { text: "Open tasks", onPress: onOpenTasks },
-      ]);
-    });
-
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "active") {
         loadHomeData();
@@ -94,11 +77,9 @@ export default function HomeScreen({
     });
 
     return () => {
-      notificationListener.current?.remove();
-      responseListener.current?.remove();
       subscription.remove();
     };
-  }, [loadHomeData, onOpenTasks]);
+  }, [loadHomeData]);
 
   useEffect(() => {
     if (isActive) {
@@ -262,30 +243,13 @@ export default function HomeScreen({
 
         <View style={styles.card}>
           <SectionHeader title="Theme" />
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            directionalLockEnabled
-            showsHorizontalScrollIndicator
-            alwaysBounceHorizontal={false}
-            contentContainerStyle={styles.themeRow}
-            style={styles.themeScroller}
-            onTouchStart={onThemeScrollStart}
-            onTouchEnd={onThemeScrollEnd}
-            onMomentumScrollEnd={onThemeScrollEnd}
-            onScrollEndDrag={onThemeScrollEnd}
-          >
-            {Object.values(THEME_OPTIONS).map((item) => (
-              <TouchableOpacity
-                key={item.key}
-                style={[styles.themeChip, themeKey === item.key && styles.themeChipActive]}
-                onPress={() => onChangeTheme?.(item.key)}
-              >
-                <View style={[styles.themeDot, { backgroundColor: item.accent }]} />
-                <Text style={styles.themeChipText}>{item.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <Text style={styles.cardText}>
+            Browse all themes on a separate page with full previews before you apply one.
+          </Text>
+          <TouchableOpacity style={styles.themePageButton} onPress={onOpenThemes}>
+            <View style={[styles.themePreviewSwatch, { backgroundColor: theme?.accent || "#2563EB" }]} />
+            <Text style={styles.themePageButtonText}>Open theme gallery</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -554,27 +518,27 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
   cardText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21 },
-  themeScroller: { marginHorizontal: -2 },
-  themeRow: { gap: 10, paddingRight: 28, paddingVertical: 2 },
-  themeChip: {
+  themePageButton: {
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.18)",
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
-    flexShrink: 0,
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minWidth: 112,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.16)",
+    gap: 12,
   },
-  themeChipActive: {
-    borderColor: "rgba(96,165,250,0.6)",
-    backgroundColor: "rgba(37,99,235,0.18)",
+  themePreviewSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
-  themeDot: { width: 12, height: 12, borderRadius: 6 },
-  themeChipText: { color: "#F8FAFC", fontWeight: "700" },
+  themePageButtonText: {
+    color: "#F8FAFC",
+    fontSize: 15,
+    fontWeight: "800",
+  },
   toggleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
