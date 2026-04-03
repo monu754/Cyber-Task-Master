@@ -5,6 +5,7 @@ const path = require("path");
 const projectRoot = process.cwd();
 const appJsonPath = path.join(projectRoot, "app.json");
 const debugApkPath = path.join(projectRoot, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk");
+const isWindows = process.platform === "win32";
 
 function readPackageId() {
   try {
@@ -23,13 +24,30 @@ function resolveAdbPath() {
   ].filter(Boolean);
 
   for (const sdkRoot of sdkRoots) {
-    const adbPath = path.join(sdkRoot, "platform-tools", process.platform === "win32" ? "adb.exe" : "adb");
+    const adbPath = path.join(sdkRoot, "platform-tools", isWindows ? "adb.exe" : "adb");
     if (fs.existsSync(adbPath)) {
       return adbPath;
     }
   }
 
-  return process.platform === "win32" ? "adb.exe" : "adb";
+  return isWindows ? "adb.exe" : "adb";
+}
+
+function resolveEmulatorPath() {
+  const sdkRoots = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(process.env.LOCALAPPDATA || "", "Android", "Sdk"),
+  ].filter(Boolean);
+
+  for (const sdkRoot of sdkRoots) {
+    const emulatorPath = path.join(sdkRoot, "emulator", isWindows ? "emulator.exe" : "emulator");
+    if (fs.existsSync(emulatorPath)) {
+      return emulatorPath;
+    }
+  }
+
+  return isWindows ? "emulator.exe" : "emulator";
 }
 
 function run(command, args, options = {}) {
@@ -91,6 +109,98 @@ function getDevices(adbPath) {
     .map((parts) => parts[0]);
 }
 
+function listAvds(emulatorPath) {
+  const result = run(emulatorPath, ["-list-avds"], { captureOutput: true });
+  if (result.error || result.status !== 0) {
+    return [];
+  }
+
+  return `${result.stdout || ""}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDevice(adbPath, predicate, timeoutMs = 120000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const matchedDevice = getDevices(adbPath).find(predicate);
+    if (matchedDevice) {
+      return matchedDevice;
+    }
+    await sleep(2000);
+  }
+
+  return null;
+}
+
+function getDeviceBootState(adbPath, deviceId) {
+  const result = run(adbPath, ["-s", deviceId, "shell", "getprop", "sys.boot_completed"], {
+    captureOutput: true,
+  });
+
+  if (result.error || result.status !== 0) {
+    return "";
+  }
+
+  return `${result.stdout || ""}`.trim();
+}
+
+async function waitForBootComplete(adbPath, deviceId, timeoutMs = 180000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (getDeviceBootState(adbPath, deviceId) === "1") {
+      return true;
+    }
+    await sleep(3000);
+  }
+
+  return false;
+}
+
+async function ensureEmulatorReady(adbPath) {
+  const connectedDevices = getDevices(adbPath);
+  const runningEmulator = connectedDevices.find((deviceId) => deviceId.startsWith("emulator-"));
+  if (runningEmulator) {
+    const booted = await waitForBootComplete(adbPath, runningEmulator, 20000);
+    return booted ? runningEmulator : null;
+  }
+
+  const emulatorPath = resolveEmulatorPath();
+  const avds = listAvds(emulatorPath);
+  const preferredAvd =
+    process.env.ANDROID_AVD_NAME ||
+    avds.find((name) => /Medium_Phone_API_36\.1/i.test(name)) ||
+    avds[0];
+
+  if (!preferredAvd) {
+    return null;
+  }
+
+  console.log(`Starting emulator ${preferredAvd} and waiting for Android to finish booting...`);
+  const emulatorProcess = spawn(emulatorPath, ["-avd", preferredAvd], {
+    cwd: projectRoot,
+    detached: true,
+    stdio: "ignore",
+    shell: false,
+  });
+  emulatorProcess.unref();
+
+  const deviceId = await waitForDevice(adbPath, (id) => id.startsWith("emulator-"), 120000);
+  if (!deviceId) {
+    return null;
+  }
+
+  const booted = await waitForBootComplete(adbPath, deviceId, 180000);
+  return booted ? deviceId : null;
+}
+
 function installDirectly(adbPath, deviceId) {
   if (!fs.existsSync(debugApkPath)) {
     return false;
@@ -103,6 +213,12 @@ function installDirectly(adbPath, deviceId) {
     return false;
   }
   return installResult.status === 0;
+}
+
+function prepareDeviceForInstall(adbPath, deviceId, packageId) {
+  console.log(`Preparing ${deviceId} for install...`);
+  run(adbPath, ["-s", deviceId, "uninstall", packageId]);
+  run(adbPath, ["-s", deviceId, "shell", "pm", "trim-caches", "512M"]);
 }
 
 function launchApp(adbPath, deviceId, packageId) {
@@ -130,8 +246,7 @@ function launchApp(adbPath, deviceId, packageId) {
 async function main() {
   const packageId = readPackageId();
   const adbPath = resolveAdbPath();
-  const connectedDevices = getDevices(adbPath);
-  const emulatorId = connectedDevices.find((deviceId) => deviceId.startsWith("emulator-"));
+  const emulatorId = await ensureEmulatorReady(adbPath);
 
   const env = {};
 
@@ -140,10 +255,18 @@ async function main() {
     console.log(`Detected ${emulatorId}. Building a lean x86_64 debug APK to reduce install size.`);
   }
 
+  if (emulatorId) {
+    prepareDeviceForInstall(adbPath, emulatorId, packageId);
+    env.ANDROID_SERIAL = emulatorId;
+    console.log(`Using Android target ${emulatorId}.`);
+  } else {
+    console.warn("No booted Android emulator detected. Expo may prompt for a device manually.");
+  }
+
   const expoCliPath = require.resolve("expo/bin/cli");
   let result = await runAsync(process.execPath, [expoCliPath, "run:android"], { env });
 
-  if (result.error && process.platform === "win32") {
+  if (result.error && isWindows) {
     result = await runAsync("cmd.exe", ["/d", "/s", "/c", `"${process.execPath}" "${expoCliPath}" run:android`], {
       env,
     });

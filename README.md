@@ -1,117 +1,235 @@
-# 🌌 Cyber-Task Master
+# TaskManagerApp
 
-## 📌 Project Summary
+TaskManagerApp is an offline-first task management app built with Expo, React Native, and SQLite. It is designed as a mobile-first productivity app with local persistence, multiple task views, reminders, recurring tasks, time tracking, and dashboard insights.
 
-Cyber-Task Master is a high-performance task management application built using **React Native (Expo)** with a focus on:
+## What the app currently does
 
-- Smooth native animations (60fps)
-- Offline-first architecture
-- Persistent local storage
-- Production-ready Android build (EAS)
+### Core task management
 
-This project demonstrates practical experience in mobile UI engineering, state management, local persistence, and performance optimization.
+- Create, edit, update status, and delete tasks
+- Title, notes/description, due date, reminder, and estimated time
+- Priority support: `Low`, `Medium`, `High`
+- Status support: `Todo`, `In Progress`, `Done`
+- Recurring task rules: `none`, `daily`, `weekly`
+- Attachment metadata entries stored locally as `name | path-or-url | type`
 
----
+### Organization
 
-## 🚀 Live Capabilities
+- Categories
+- Workspaces
+- Projects
+- Tags
+- Subtasks
+- Task dependencies
 
-### 1️⃣ Advanced UI System (Cyber-Glass Design)
+### Views
 
-- Layered semi-transparent components
-- Blur and glow-based visual hierarchy
-- Responsive layout across device sizes
-- Controlled re-renders for performance stability
+- List view
+- Board view grouped by status
+- Calendar-style grouped view by due date
+- Timeline view sorted by upcoming schedule
 
-### 2️⃣ 3D Parallax Animation Engine
+### Productivity features
 
-- Multi-layer animated background
-- Navigation-aware motion interpolation
-- Native-driven animations using `Animated API`
-- Optimized to maintain consistent frame rate
+- Reminder scheduling through Expo Notifications
+- Time tracking with active timer state
+- Completion stats
+- Weekly performance summary
+- Burn-down style trend data
+- Saved filters
+- Dashboard customization toggles
+- Theme switching
 
-### 3️⃣ Offline-First Data Persistence
+## Current architecture
 
-- Integrated `@react-native-async-storage/async-storage`
-- Automatic hydration on app launch
-- Resilient against app restarts and background termination
-- No backend dependency
+The app is fully local-first.
 
-### 4️⃣ Real-Time Productivity Metrics
+- App shell and screen state are handled in React Native
+- Data is stored in a local SQLite database
+- Some UI preferences and saved filters are stored with AsyncStorage
+- Notifications are scheduled locally on-device
+- There is no backend API in this repository
+- Redis is not part of the current architecture
 
-- Dynamic progress calculation
-- Instant UI updates on state change
-- Efficiency score computed from task completion ratio
-- No redundant re-renders
+## Project structure
 
-### 5️⃣ Production Deployment
-
-- Built using Expo Application Services (EAS)
-- Standalone Android APK
-- Tested build pipeline and release workflow
-
----
-
-## 🛠️ Tech Stack
-
-| Layer            | Technology                      |
-| ---------------- | ------------------------------- |
-| Mobile Framework | React Native                    |
-| Runtime          | Expo                            |
-| Navigation       | React Navigation (Native Stack) |
-| Storage          | SQLite                          |
-| Animations       | React Native Animated API       |
-| Icons            | Expo Vector Icons (Ionicons)    |
-| Build System     | EAS Build                       |
-
----
-
-## 🧠 Engineering Decisions
-
-### Why AsyncStorage?
-
-- Lightweight
-- No backend overhead
-- Suitable for single-device persistence
-- Faster development cycle for MVP deployment
-
-### Why Animated API instead of heavy libraries?
-
-- Lower dependency footprint
-- Native driver support
-- Better performance control
-- Avoids unnecessary abstraction layers
-
-### Why Offline-First?
-
-- Improves reliability
-- Works without network
-- Reduces architectural complexity for a task manager use-case
-
----
-
-## 📦 Installation & Setup
-
-### Clone Repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/Cyber-Task-Master.git
-cd Cyber-Task-Master
+```text
+TaskManagerApp/
+├── App.js
+├── app.json
+├── database.js
+├── package.json
+├── screens/
+│   ├── AddTaskScreen.js
+│   ├── HomeScreen.js
+│   ├── MainWorkspaceScreen.js
+│   └── TasksScreen.js
+├── utils/
+│   ├── analytics.js
+│   ├── preferences.js
+│   └── taskNotifications.js
+├── scripts/
+│   ├── reset-project.js
+│   └── run-android.js
+├── navigation/
+│   └── StackNavigator.js
+├── components/
+├── hooks/
+├── constants/
+└── assets/
 ```
 
-### Install Dependencies
+## Important files
+
+### `App.js`
+
+- Initializes the local database
+- Loads the current theme preference
+- Mounts the main workspace shell
+
+### `database.js`
+
+This is the main local data layer.
+
+It defines and manages:
+
+- `categories`
+- `workspaces`
+- `projects`
+- `tags`
+- `preferences`
+- `tasks`
+- `subtasks`
+- `task_tags`
+- `task_dependencies`
+- `task_attachments`
+- `time_entries`
+
+It also exposes helpers for:
+
+- task CRUD
+- recurrence handling
+- timer start/stop
+- dashboard insights
+- theme preference storage
+- category / workspace / project creation
+
+### `screens/MainWorkspaceScreen.js`
+
+- Hosts the three main app areas:
+  - Dashboard
+  - Tasks
+  - Planner
+- Contains the custom bottom navigation
+- Handles in-app update checking
+
+### `screens/HomeScreen.js`
+
+- Dashboard screen
+- Shows next due task
+- Shows completion metrics, weekly summaries, burndown trend, and time tracking summaries
+- Supports theme switching and dashboard customization
+
+### `screens/TasksScreen.js`
+
+- Main task library
+- Search
+- Saved filters
+- View tabs for list / board / calendar / timeline
+- Filter popup
+- Task actions for edit, status changes, timer start/stop, and delete
+
+### `screens/AddTaskScreen.js`
+
+- Create and edit task form
+- Designed for clearer, beginner-friendly input
+- Supports categories, workspaces, projects, priorities, reminders, recurring tasks, tags, subtasks, dependencies, attachments, and notes
+
+### `utils/taskNotifications.js`
+
+- Requests notification permissions
+- Normalizes reminder values
+- Schedules, cancels, and syncs task reminders
+
+### `utils/preferences.js`
+
+- Theme definitions
+- Dashboard widget preferences
+- Saved filter persistence
+
+### `utils/analytics.js`
+
+- Formats tracked time
+- Builds chart-ready data for weekly stats and burndown trends
+
+### `scripts/run-android.js`
+
+Custom Android runner that:
+
+- starts an emulator if needed
+- waits for boot completion
+- prepares the device for APK installation
+- runs Expo Android builds with a smoother fallback flow
+
+## Tech stack
+
+- React Native
+- Expo
+- Expo SQLite
+- Expo Notifications
+- Expo Blur
+- Expo Linear Gradient
+- React 19
+- React Native Safe Area Context
+- AsyncStorage
+
+## Available scripts
+
+```bash
+npm start
+npm run android
+npm run android:raw
+npm run ios
+npm run web
+npm run lint
+```
+
+### Notes
+
+- `npm run android` uses the custom launcher in `scripts/run-android.js`
+- `npm run android:raw` runs plain `expo run:android`
+
+## Setup
+
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### Start the Development Server
+### 2. Start Expo
 
 ```bash
-npx expo start
+npm start
 ```
 
-### Preview
+### 3. Run on Android
 
-<p align="center">
-  <img src="./assets/images/preview.png" alt="Cyber Task Master Preview" width="800"/>
-</p>
+```bash
+npm run android
+```
+
+## Current limitations
+
+- No backend service is included
+- No multi-device sync is included
+- Attachments are stored as local metadata references, not full native file upload flows
+- Redis caching is not implemented because this repository is local-only
+
+## Development status
+
+This repository currently contains a feature-rich local mobile app rather than a backend-connected production SaaS platform. The codebase is strongest as:
+
+- an offline-first mobile task manager
+- a UI/UX and local persistence project
+- a base for future backend sync, auth, and collaboration features

@@ -1,6 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -12,41 +10,123 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { createTask, getCategories, updateTask } from "../database";
+import {
+  createTask,
+  ensureCategory,
+  ensureProject,
+  ensureWorkspace,
+  getCategories,
+  getProjects,
+  getTags,
+  getTasksWithDetails,
+  getWorkspaces,
+  updateTask,
+} from "../database";
 import {
   cancelTaskNotifications,
-  getReminderLabel,
   normalizeReminderMinutes,
   REMINDER_OPTIONS,
   scheduleSingleNotification,
 } from "../utils/taskNotifications";
 
-export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved, taskToEdit }) {
+const STATUS_OPTIONS = ["Todo", "In Progress", "Done"];
+const PRIORITY_OPTIONS = ["Low", "Medium", "High"];
+const RECURRENCE_OPTIONS = ["none", "daily", "weekly"];
+
+const parseList = (value, separator = ",") =>
+  value
+    .split(separator)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const parseAttachments = (value) =>
+  value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, uri = "", type = "link"] = line.split("|").map((part) => part.trim());
+      return { name, uri, type };
+    });
+
+function Chip({ label, onPress, selected }) {
+  return (
+    <TouchableOpacity style={[styles.chip, selected && styles.chipActive]} onPress={onPress}>
+      <Text style={[styles.chipText, selected && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ChipRow({ children }) {
+  return (
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      directionalLockEnabled
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRow}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+function Section({ children, help, title }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {help ? <Text style={styles.helper}>{help}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
+export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved, taskToEdit, theme }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [status, setStatus] = useState("Todo");
   const [priority, setPriority] = useState("Medium");
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(1);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [categoryId, setCategoryId] = useState(1);
+  const [workspaceId, setWorkspaceId] = useState(1);
+  const [projectId, setProjectId] = useState(1);
+  const [newCategory, setNewCategory] = useState("");
+  const [newWorkspace, setNewWorkspace] = useState("");
+  const [newProject, setNewProject] = useState("");
+  const [tagText, setTagText] = useState("");
+  const [subtaskText, setSubtaskText] = useState("");
+  const [attachmentText, setAttachmentText] = useState("");
+  const [dependencyIds, setDependencyIds] = useState([]);
+  const [estimatedMinutes, setEstimatedMinutes] = useState("30");
+  const [recurrence, setRecurrence] = useState("none");
+  const [reminderMinutes, setReminderMinutes] = useState(1440);
   const [date, setDate] = useState(new Date());
   const [hasDeadline, setHasDeadline] = useState(false);
-  const [reminderMinutes, setReminderMinutes] = useState(1440);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState("date");
-  const [focusedField, setFocusedField] = useState(null);
 
   useEffect(() => {
-    try {
-      const loadedCategories = getCategories();
-      setCategories(loadedCategories);
-      setSelectedCategory((current) => current || loadedCategories[0]?.id || 1);
-    } catch (error) {
-      console.error("Error loading categories:", error);
+    if (!isActive) {
+      return;
     }
-  }, []);
+
+    setCategories(getCategories());
+    setWorkspaces(getWorkspaces());
+    setProjects(getProjects());
+    setTags(getTags());
+    setTasks(getTasksWithDetails());
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive) {
@@ -56,253 +136,247 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     if (taskToEdit) {
       setTitle(taskToEdit.title || "");
       setDescription(taskToEdit.description || "");
+      setStatus(taskToEdit.status || "Todo");
       setPriority(taskToEdit.priority || "Medium");
-      setSelectedCategory(taskToEdit.category_id || categories[0]?.id || 1);
+      setCategoryId(taskToEdit.category_id || 1);
+      setWorkspaceId(taskToEdit.workspace_id || 1);
+      setProjectId(taskToEdit.project_id || 1);
+      setTagText((taskToEdit.tags || []).map((tag) => tag.name).join(", "));
+      setSubtaskText((taskToEdit.subtasks || []).map((subtask) => subtask.title).join("\n"));
+      setAttachmentText(
+        (taskToEdit.attachments || [])
+          .map((attachment) => [attachment.name, attachment.uri, attachment.type].join("|"))
+          .join("\n"),
+      );
+      setDependencyIds((taskToEdit.dependencies || []).map((item) => item.depends_on_task_id));
+      setEstimatedMinutes(String(taskToEdit.estimated_minutes || 30));
+      setRecurrence(taskToEdit.recurrence || "none");
       setReminderMinutes(normalizeReminderMinutes(taskToEdit.reminder_minutes));
-
+      setNewCategory("");
+      setNewWorkspace("");
+      setNewProject("");
       if (taskToEdit.due_date) {
-        const parsedDate = new Date(taskToEdit.due_date);
-        if (!Number.isNaN(parsedDate.getTime())) {
-          setDate(parsedDate);
-          setHasDeadline(true);
-        }
+        setDate(new Date(taskToEdit.due_date));
+        setHasDeadline(true);
       } else {
         setDate(new Date());
         setHasDeadline(false);
       }
-
       return;
     }
 
     setTitle("");
     setDescription("");
+    setStatus("Todo");
     setPriority("Medium");
-    setSelectedCategory(categories[0]?.id || 1);
+    setCategoryId(1);
+    setWorkspaceId(1);
+    setProjectId(1);
+    setNewCategory("");
+    setNewWorkspace("");
+    setNewProject("");
+    setTagText("");
+    setSubtaskText("");
+    setAttachmentText("");
+    setDependencyIds([]);
+    setEstimatedMinutes("30");
+    setRecurrence("none");
+    setReminderMinutes(1440);
     setDate(new Date());
     setHasDeadline(false);
-    setReminderMinutes(1440);
-  }, [categories, isActive, taskToEdit]);
+  }, [isActive, taskToEdit]);
 
-  const reminderPreview = useMemo(() => getReminderLabel(reminderMinutes), [reminderMinutes]);
-  const isEditMode = Boolean(taskToEdit);
-  const selectedCategoryDetails = categories.find((category) => category.id === selectedCategory);
-  const deadlinePreview = hasDeadline
-    ? `${date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      })} at ${date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
-    : "No deadline yet";
-
-  const validateFutureDateTime = (candidate) => {
-    if (candidate <= new Date()) {
-      Alert.alert("Invalid deadline", "Please choose a future date and time.");
-      return false;
-    }
-
-    return true;
-  };
+  const availableProjects = useMemo(
+    () => projects.filter((project) => project.workspace_id === workspaceId),
+    [projects, workspaceId],
+  );
+  const dependencyOptions = useMemo(
+    () => tasks.filter((task) => task.id !== taskToEdit?.id).slice(0, 12),
+    [taskToEdit?.id, tasks],
+  );
+  const themeAccent = theme?.accent || "#2563EB";
+  const themeText = theme?.text || "#F8FAFC";
+  const themeMuted = theme?.muted || "#94A3B8";
 
   const onChangeDateTime = (_, selectedDate) => {
     setShowPicker(false);
-
     if (!selectedDate) {
       return;
     }
-
     const nextDate = new Date(date);
-
     if (pickerMode === "date") {
-      nextDate.setFullYear(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate(),
-      );
+      nextDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     } else {
       nextDate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
     }
-
-    if (pickerMode === "time" && !validateFutureDateTime(nextDate)) {
-      return;
-    }
-
     setDate(nextDate);
     setHasDeadline(true);
-
-    if (pickerMode === "date" && Platform.OS === "android") {
-      setTimeout(() => {
-        setPickerMode("time");
-        setShowPicker(true);
-      }, 100);
-    }
   };
 
   const handleSave = async () => {
-    const trimmedTitle = title.trim();
-
-    if (!trimmedTitle) {
-      Alert.alert("Missing title", "Please enter a task title.");
+    if (title.trim().length < 3) {
+      Alert.alert("Task title required", "Please enter at least 3 characters.");
       return;
     }
 
-    if (trimmedTitle.length < 3) {
-      Alert.alert("Short title", "Task titles should be at least 3 characters.");
-      return;
-    }
+    const category = newCategory.trim()
+      ? ensureCategory({ name: newCategory.trim() })
+      : categories.find((item) => item.id === categoryId);
+    const workspace = newWorkspace.trim()
+      ? ensureWorkspace({ name: newWorkspace.trim() })
+      : workspaces.find((item) => item.id === workspaceId);
+    const project = newProject.trim()
+      ? ensureProject({ name: newProject.trim(), workspaceId: workspace?.id || 1 })
+      : availableProjects.find((item) => item.id === projectId);
 
-    if (hasDeadline && !validateFutureDateTime(date)) {
-      return;
-    }
-
-    const dueDateIso = hasDeadline ? date.toISOString() : null;
     const payload = {
-      title: trimmedTitle,
+      title: title.trim(),
       description: description.trim(),
+      status,
       priority,
-      categoryId: selectedCategory,
-      dueDate: dueDateIso,
+      categoryId: category?.id || 1,
+      workspaceId: workspace?.id || 1,
+      projectId: project?.id || 1,
+      dueDate: hasDeadline ? date.toISOString() : null,
       reminderMinutes,
+      recurrence,
+      estimatedMinutes: Number(estimatedMinutes) || 0,
+      tags: parseList(tagText).map((name) => ({ name })),
+      dependencyIds,
+      subtasks: parseList(subtaskText, "\n").map((name) => ({ name })),
+      attachments: parseAttachments(attachmentText),
     };
 
-    if (isEditMode) {
-      updateTask({ id: taskToEdit.id, ...payload });
+    const savedTask = taskToEdit
+      ? updateTask({ id: taskToEdit.id, ...payload })
+      : createTask(payload);
+
+    if (taskToEdit) {
       await cancelTaskNotifications(taskToEdit.id);
-
-      if (hasDeadline && taskToEdit.completed === 0) {
-        await scheduleSingleNotification({
-          ...taskToEdit,
-          ...payload,
-          category_id: selectedCategory,
-          due_date: dueDateIso,
-          reminder_minutes: reminderMinutes,
-        });
-      }
-    } else {
-      const result = createTask(payload);
-
-      if (hasDeadline) {
-        await scheduleSingleNotification({
-          id: result.lastInsertRowId,
-          title: trimmedTitle,
-          due_date: dueDateIso,
-          reminder_minutes: reminderMinutes,
-          completed: 0,
-        });
-      }
     }
-
+    if (savedTask?.due_date && savedTask.status !== "Done") {
+      await scheduleSingleNotification({ ...savedTask, completed: 0 });
+    }
     onSaved?.();
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#07111F" />
-      <KeyboardAvoidingView
-        style={styles.safeArea}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <StatusBar barStyle="light-content" backgroundColor={theme?.gradient?.[0] || "#07111F"} />
+      <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           style={styles.container}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: Math.max(bottomInset, insets.bottom + 36) },
-          ]}
-          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(bottomInset, insets.bottom + 28) }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.headerRow}>
-            <View style={styles.headerText}>
-              <Text style={styles.eyebrow}>Planner</Text>
-              <Text style={styles.title}>{isEditMode ? "Refine Task" : "Create a Task"}</Text>
-              <Text style={styles.subtitle}>
-                {isEditMode
-                  ? "Shape it until it feels clear, simple, and easy to return to."
-                  : "Turn a thought into a plan you can trust yourself to come back to."}
-              </Text>
-            </View>
-
-            <TouchableOpacity style={styles.closeButton} activeOpacity={0.85} onPress={onCancel}>
-              <Ionicons name="close" size={22} color="#F8FAFC" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.tipCard}>
-            <Ionicons name="sparkles-outline" size={18} color="#7DD3FC" />
-            <Text style={styles.tipText}>
-              Keep it light. One clear task is often enough to change the whole day.
+          <View style={styles.headerText}>
+            <Text style={[styles.eyebrow, { color: themeAccent }]}>Create task</Text>
+            <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
+              {taskToEdit ? "Edit task" : "New task"}
+            </Text>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: themeMuted }]}>
+              Start with the basics. The sections below explain what each option does.
             </Text>
           </View>
 
-          <LinearGradient colors={["rgba(37,99,235,0.92)", "rgba(76,29,149,0.86)"]} style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <View>
-                <Text style={styles.previewEyebrow}>Live preview</Text>
-                <Text style={styles.previewTitle} numberOfLines={1}>
-                  {title.trim() || "Your next task"}
-                </Text>
-              </View>
-              <View style={styles.previewIcon}>
-                <Ionicons name={isEditMode ? "create-outline" : "flash-outline"} size={18} color="#F8FAFC" />
-              </View>
-            </View>
+          <View style={[styles.card, { backgroundColor: theme?.panel || "rgba(15, 23, 42, 0.76)" }]}>
+            <Section title="Task name" help="Use a short action like 'Submit report' or 'Call Rahul'.">
+              <TextInput
+                style={styles.input}
+                placeholder="What needs to get done?"
+                placeholderTextColor="#64748B"
+                value={title}
+                onChangeText={setTitle}
+              />
+            </Section>
 
-            <Text style={styles.previewBody} numberOfLines={2}>
-              {description.trim() || "Leave a note your future self will be grateful to read."}
-            </Text>
+            <Section title="Category" help="A simple group like Work, Personal, Study, or Health.">
+              <ChipRow>
+                {categories.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    selected={categoryId === item.id && !newCategory.trim()}
+                    onPress={() => {
+                      setCategoryId(item.id);
+                      setNewCategory("");
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              <TextInput
+                style={[styles.input, styles.topGap]}
+                placeholder="Add a new category"
+                placeholderTextColor="#64748B"
+                value={newCategory}
+                onChangeText={setNewCategory}
+              />
+            </Section>
 
-            <View style={styles.previewMetaRow}>
-              <View style={styles.previewMetaPill}>
-                <View
-                  style={[
-                    styles.previewMetaDot,
-                    { backgroundColor: selectedCategoryDetails?.color || "#7DD3FC" },
-                  ]}
-                />
-                <Text style={styles.previewMetaText}>{selectedCategoryDetails?.name || "General"}</Text>
-              </View>
-              <View style={styles.previewMetaPill}>
-                <Ionicons name="flag-outline" size={13} color="#FDE68A" />
-                <Text style={styles.previewMetaText}>{priority}</Text>
-              </View>
-            </View>
+            <Section title="Status" help="Choose whether the task is pending, active, or done.">
+              <ChipRow>
+                {STATUS_OPTIONS.map((item) => (
+                  <Chip key={item} label={item} selected={status === item} onPress={() => setStatus(item)} />
+                ))}
+              </ChipRow>
+            </Section>
 
-            <View style={styles.previewFooter}>
-              <View style={styles.previewFooterItem}>
-                <Text style={styles.previewFooterLabel}>Reminder</Text>
-                <Text style={styles.previewFooterValue}>{reminderPreview}</Text>
-              </View>
-              <View style={styles.previewFooterItem}>
-                <Text style={styles.previewFooterLabel}>Deadline</Text>
-                <Text style={styles.previewFooterValue}>{deadlinePreview}</Text>
-              </View>
-            </View>
-          </LinearGradient>
+            <Section title="Priority" help="High means it should be handled sooner than the rest.">
+              <ChipRow>
+                {PRIORITY_OPTIONS.map((item) => (
+                  <Chip key={item} label={item} selected={priority === item} onPress={() => setPriority(item)} />
+                ))}
+              </ChipRow>
+            </Section>
 
-          <View style={styles.card}>
-            <FieldLabel label="Task title" />
-            <TextInput
-              style={[styles.input, focusedField === "title" && styles.inputFocused]}
-              placeholder="What needs to get done?"
-              placeholderTextColor="#64748B"
-              value={title}
-              onChangeText={(text) => setTitle(text.slice(0, 80))}
-              onFocus={() => setFocusedField("title")}
-              onBlur={() => setFocusedField(null)}
-            />
+            <Section title="Workspace" help="A big area of work like Office, Home, or Freelance.">
+              <ChipRow>
+                {workspaces.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    selected={workspaceId === item.id && !newWorkspace.trim()}
+                    onPress={() => {
+                      setWorkspaceId(item.id);
+                      setNewWorkspace("");
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              <TextInput
+                style={[styles.input, styles.topGap]}
+                placeholder="Add a new workspace"
+                placeholderTextColor="#64748B"
+                value={newWorkspace}
+                onChangeText={setNewWorkspace}
+              />
+            </Section>
 
-            <View style={styles.rowTopSpacing}>
-              <View style={styles.inlineLabelRow}>
-                <FieldLabel label="Deadline" />
-                {hasDeadline ? (
-                  <TouchableOpacity onPress={() => setHasDeadline(false)}>
-                    <Text style={styles.clearText}>Clear</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+            <Section title="Project" help="A smaller group inside a workspace, such as Website Redesign.">
+              <ChipRow>
+                {availableProjects.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    selected={projectId === item.id && !newProject.trim()}
+                    onPress={() => {
+                      setProjectId(item.id);
+                      setNewProject("");
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              <TextInput
+                style={[styles.input, styles.topGap]}
+                placeholder="Add a new project"
+                placeholderTextColor="#64748B"
+                value={newProject}
+                onChangeText={setNewProject}
+              />
+            </Section>
 
-              <View style={styles.dateRow}>
+            <Section title="Deadline" help="Set the date and time when this task should be finished.">
+              <View style={styles.row}>
                 <TouchableOpacity
                   style={styles.dateButton}
                   onPress={() => {
@@ -310,18 +384,8 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                     setShowPicker(true);
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={18} color="#7DD3FC" />
-                  <Text style={[styles.dateButtonText, hasDeadline && styles.dateButtonTextActive]}>
-                    {hasDeadline
-                      ? date.toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })
-                      : "Set date"}
-                  </Text>
+                  <Text style={styles.dateText}>{hasDeadline ? date.toLocaleDateString() : "Set date"}</Text>
                 </TouchableOpacity>
-
                 <TouchableOpacity
                   style={styles.dateButton}
                   onPress={() => {
@@ -329,156 +393,135 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                     setShowPicker(true);
                   }}
                 >
-                  <Ionicons name="time-outline" size={18} color="#7DD3FC" />
-                  <Text style={[styles.dateButtonText, hasDeadline && styles.dateButtonTextActive]}>
+                  <Text style={styles.dateText}>
                     {hasDeadline
                       ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                       : "Set time"}
                   </Text>
                 </TouchableOpacity>
               </View>
-
               {showPicker ? (
-                <DateTimePicker
-                  value={date}
-                  mode={pickerMode}
-                  display="default"
-                  onChange={onChangeDateTime}
-                  minimumDate={pickerMode === "date" ? new Date() : undefined}
-                />
+                <DateTimePicker value={date} mode={pickerMode} display="default" onChange={onChangeDateTime} />
               ) : null}
-            </View>
+            </Section>
 
-            <View style={styles.rowTopSpacing}>
-              <FieldLabel label="Reminder" />
-              <Text style={styles.helperText}>Current reminder: {reminderPreview}</Text>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                directionalLockEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipRow}
-              >
-                {REMINDER_OPTIONS.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.reminderChip,
-                      reminderMinutes === option.value && styles.reminderChipActive,
-                    ]}
-                    onPress={() => setReminderMinutes(option.value)}
-                  >
-                    <Text
-                      style={[
-                        styles.reminderChipText,
-                        reminderMinutes === option.value && styles.reminderChipTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
+            <Section title="Reminder" help="Choose when you want the app to remind you.">
+              <ChipRow>
+                {REMINDER_OPTIONS.map((item) => (
+                  <Chip
+                    key={item.value}
+                    label={item.label}
+                    selected={reminderMinutes === item.value}
+                    onPress={() => setReminderMinutes(item.value)}
+                  />
                 ))}
-              </ScrollView>
-            </View>
+              </ChipRow>
+            </Section>
 
-            <View style={styles.rowTopSpacing}>
-              <FieldLabel label="Category" />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipRow}
-              >
-                {categories.map((category) => {
-                  const isSelected = selectedCategory === category.id;
-                  return (
-                    <TouchableOpacity
-                      key={category.id}
-                      style={[
-                        styles.categoryChip,
-                        isSelected && {
-                          backgroundColor: `${category.color}22`,
-                          borderColor: category.color,
-                        },
-                      ]}
-                      onPress={() => setSelectedCategory(category.id)}
-                    >
-                      <View style={[styles.categoryDot, { backgroundColor: category.color }]} />
-                      <Text
-                        style={[
-                          styles.categoryChipText,
-                          isSelected && { color: "#F8FAFC" },
-                        ]}
-                      >
-                        {category.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <Section title="Repeat" help="Use this only for tasks that come back regularly.">
+              <ChipRow>
+                {RECURRENCE_OPTIONS.map((item) => (
+                  <Chip key={item} label={item} selected={recurrence === item} onPress={() => setRecurrence(item)} />
+                ))}
+              </ChipRow>
+            </Section>
 
-            <View style={styles.rowTopSpacing}>
-              <FieldLabel label="Priority" />
-              <View style={styles.priorityRow}>
-                {[
-                  { label: "Low", color: "#38BDF8" },
-                  { label: "Medium", color: "#FBBF24" },
-                  { label: "High", color: "#FB7185" },
-                ].map((item) => {
-                  const isSelected = priority === item.label;
-                  return (
-                    <TouchableOpacity
-                      key={item.label}
-                      style={[
-                        styles.priorityChip,
-                        isSelected && {
-                          backgroundColor: `${item.color}22`,
-                          borderColor: item.color,
-                        },
-                      ]}
-                      onPress={() => setPriority(item.label)}
-                    >
-                      <View style={[styles.priorityDot, { backgroundColor: item.color }]} />
-                      <Text style={[styles.priorityChipText, isSelected && styles.priorityChipTextActive]}>
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.rowTopSpacing}>
-              <FieldLabel label="Notes" optional />
+            <Section title="Estimated time" help="Roughly how many minutes the task will take.">
               <TextInput
-                style={[styles.input, styles.notesInput, focusedField === "notes" && styles.inputFocused]}
-                placeholder="Add context, next steps, or anything worth remembering"
+                style={styles.input}
+                keyboardType="numeric"
+                placeholder="30"
                 placeholderTextColor="#64748B"
+                value={estimatedMinutes}
+                onChangeText={setEstimatedMinutes}
+              />
+            </Section>
+
+            <Section title="Tags" help="Optional keywords that make searching easier later.">
+              <TextInput
+                style={styles.input}
+                placeholder="urgent, design, review"
+                placeholderTextColor="#64748B"
+                value={tagText}
+                onChangeText={setTagText}
+              />
+              <ChipRow>
+                {tags.slice(0, 10).map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.name}
+                    selected={parseList(tagText).includes(item.name)}
+                    onPress={() => setTagText([...new Set([...parseList(tagText), item.name])].join(", "))}
+                  />
+                ))}
+              </ChipRow>
+            </Section>
+
+            <Section title="Subtasks" help="Break a big task into smaller steps, one per line.">
+              <TextInput
+                style={[styles.input, styles.multiInput]}
                 multiline
                 textAlignVertical="top"
-                value={description}
-                onChangeText={(text) => setDescription(text.slice(0, 240))}
-                onFocus={() => setFocusedField("notes")}
-                onBlur={() => setFocusedField(null)}
+                placeholder={"Draft outline\nReview notes\nSubmit final version"}
+                placeholderTextColor="#64748B"
+                value={subtaskText}
+                onChangeText={setSubtaskText}
               />
-            </View>
+            </Section>
+
+            <Section title="Dependencies" help="Choose tasks that must finish before this one starts.">
+              <ChipRow>
+                {dependencyOptions.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.title}
+                    selected={dependencyIds.includes(item.id)}
+                    onPress={() =>
+                      setDependencyIds((current) =>
+                        current.includes(item.id)
+                          ? current.filter((id) => id !== item.id)
+                          : [...current, item.id],
+                      )
+                    }
+                  />
+                ))}
+              </ChipRow>
+            </Section>
+
+            <Section title="Attachments" help="Optional. Add one item per line in the format name|path-or-url|type.">
+              <TextInput
+                style={[styles.input, styles.multiInput]}
+                multiline
+                textAlignVertical="top"
+                placeholder={"Spec|https://example.com/spec|link\nMockup|/download/mock.png|image"}
+                placeholderTextColor="#64748B"
+                value={attachmentText}
+                onChangeText={setAttachmentText}
+              />
+            </Section>
+
+            <Section title="Notes" help="Anything helpful you want to remember later.">
+              <TextInput
+                style={[styles.input, styles.multiInput]}
+                multiline
+                textAlignVertical="top"
+                placeholder="Add context, definition of done, or extra details."
+                placeholderTextColor="#64748B"
+                value={description}
+                onChangeText={setDescription}
+              />
+            </Section>
           </View>
 
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.88} onPress={onCancel}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
+              <Text style={styles.secondaryText}>Back</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={[styles.primaryButton, !title.trim() && styles.primaryButtonDisabled]}
-              activeOpacity={0.92}
+              style={[styles.primaryButton, { backgroundColor: themeAccent }]}
               onPress={handleSave}
-              disabled={!title.trim()}
             >
-              <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
-              <Text style={styles.primaryButtonText}>
-                {isEditMode ? "Update task" : "Save task"}
-              </Text>
+              <Text style={styles.primaryText}>{taskToEdit ? "Update task" : "Save task"}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -487,359 +530,34 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   );
 }
 
-function FieldLabel({ label, optional }) {
-  return (
-    <Text style={styles.fieldLabel}>
-      {label}
-      {optional ? " (optional)" : ""}
-    </Text>
-  );
-}
-
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    gap: 18,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 16,
-  },
-  headerText: {
-    flex: 1,
-  },
-  eyebrow: {
-    color: "#7DD3FC",
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-    marginBottom: 8,
-  },
-  title: {
-    color: "#F8FAFC",
-    fontSize: 32,
-    fontWeight: "900",
-    letterSpacing: -1,
-  },
-  subtitle: {
-    color: "#94A3B8",
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 8,
-  },
-  closeButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 18,
-    backgroundColor: "rgba(15, 23, 42, 0.76)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tipCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 16,
-    borderRadius: 22,
-    backgroundColor: "rgba(14, 165, 233, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(125, 211, 252, 0.16)",
-  },
-  tipText: {
-    flex: 1,
-    color: "#D7ECFF",
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "600",
-  },
-  previewCard: {
-    borderRadius: 28,
-    padding: 20,
-    gap: 16,
-    shadowColor: "#1D4ED8",
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
-  },
-  previewHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  previewEyebrow: {
-    color: "rgba(224, 231, 255, 0.86)",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  previewTitle: {
-    color: "#FFFFFF",
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  previewIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  previewBody: {
-    color: "rgba(224, 231, 255, 0.92)",
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  previewMetaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  previewMetaPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  previewMetaDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  previewMetaText: {
-    color: "#F8FAFC",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  previewFooter: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  previewFooterItem: {
-    flex: 1,
-    backgroundColor: "rgba(7, 17, 31, 0.2)",
-    borderRadius: 18,
-    padding: 12,
-  },
-  previewFooterLabel: {
-    color: "rgba(191, 219, 254, 0.92)",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  previewFooterValue: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 6,
-  },
-  card: {
-    backgroundColor: "rgba(15, 23, 42, 0.76)",
-    borderRadius: 28,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.14)",
-  },
-  fieldLabel: {
-    color: "#7DD3FC",
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 10,
-  },
-  input: {
-    minHeight: 56,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.16)",
-    color: "#F8FAFC",
-    paddingHorizontal: 16,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  inputFocused: {
-    borderColor: "rgba(96, 165, 250, 0.6)",
-    backgroundColor: "rgba(37, 99, 235, 0.08)",
-  },
-  notesInput: {
-    minHeight: 140,
-    paddingTop: 16,
-  },
-  rowTopSpacing: {
-    marginTop: 18,
-  },
-  inlineLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  clearText: {
-    color: "#FCA5A5",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  dateRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  dateButton: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 12,
-  },
-  dateButtonText: {
-    color: "#94A3B8",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  dateButtonTextActive: {
-    color: "#F8FAFC",
-  },
-  helperText: {
-    color: "#94A3B8",
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 10,
-  },
-  chipRow: {
-    gap: 10,
-    paddingRight: 18,
-  },
-  reminderChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.16)",
-  },
-  reminderChipActive: {
-    backgroundColor: "rgba(37, 99, 235, 0.18)",
-    borderColor: "rgba(96, 165, 250, 0.6)",
-  },
-  reminderChipText: {
-    color: "#B8C6D5",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  reminderChipTextActive: {
-    color: "#F8FAFC",
-  },
-  categoryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.16)",
-  },
-  categoryDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  categoryChipText: {
-    color: "#B8C6D5",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  priorityRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  priorityChip: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  priorityDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  priorityChipText: {
-    color: "#B8C6D5",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  priorityChipTextActive: {
-    color: "#F8FAFC",
-  },
-  actionRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  secondaryButton: {
-    flex: 0.36,
-    minHeight: 54,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.14)",
-  },
-  secondaryButtonText: {
-    color: "#B8C6D5",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  primaryButton: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 18,
-    backgroundColor: "#2563EB",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.5,
-  },
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
-  },
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 18, gap: 18 },
+  headerText: { gap: 8 },
+  eyebrow: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
+  title: { fontSize: 30, fontWeight: "900" },
+  titleCompact: { fontSize: 26 },
+  subtitle: { fontSize: 15, lineHeight: 22 },
+  subtitleCompact: { fontSize: 14, lineHeight: 20 },
+  card: { borderRadius: 24, padding: 18, borderWidth: 1, borderColor: "rgba(148,163,184,0.14)", gap: 18 },
+  section: { gap: 8 },
+  sectionTitle: { color: "#7DD3FC", fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
+  helper: { color: "#94A3B8", fontSize: 13, lineHeight: 19 },
+  input: { minHeight: 54, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(148,163,184,0.16)", color: "#F8FAFC", paddingHorizontal: 16, fontSize: 15 },
+  multiInput: { minHeight: 110, paddingTop: 14 },
+  chipRow: { gap: 10, paddingRight: 18, alignItems: "center" },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(148,163,184,0.16)" },
+  chipActive: { backgroundColor: "rgba(37,99,235,0.18)", borderColor: "rgba(96,165,250,0.6)" },
+  chipText: { color: "#B8C6D5", fontSize: 13, fontWeight: "700" },
+  chipTextActive: { color: "#F8FAFC" },
+  row: { flexDirection: "row", gap: 12 },
+  dateButton: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(148,163,184,0.16)", alignItems: "center", justifyContent: "center" },
+  dateText: { color: "#F8FAFC", fontWeight: "700" },
+  topGap: { marginTop: 4 },
+  actionRow: { flexDirection: "row", gap: 12 },
+  secondaryButton: { flex: 0.38, minHeight: 52, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(148,163,184,0.14)" },
+  primaryButton: { flex: 1, minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  secondaryText: { color: "#B8C6D5", fontSize: 15, fontWeight: "800" },
+  primaryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
 });

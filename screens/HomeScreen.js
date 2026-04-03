@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -7,41 +6,76 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getTasksWithCategories } from "../database";
+import { getActiveTimer, getTaskInsights, getTasksWithDetails } from "../database";
+import { buildBurndownSeries, buildSevenDaySeries, buildWeeklyReport, minutesToLabel } from "../utils/analytics";
 import {
-  requestNotificationPermissions,
-  syncTaskNotifications,
-} from "../utils/taskNotifications";
+  DEFAULT_DASHBOARD_CONFIG,
+  loadDashboardConfig,
+  saveDashboardConfig,
+  THEME_OPTIONS,
+} from "../utils/preferences";
+import { requestNotificationPermissions, syncTaskNotifications } from "../utils/taskNotifications";
 
-const PREVIEW_LIMIT = 4;
+function MiniBars({ color, data }) {
+  const maxValue = Math.max(...data.map((item) => item.value), 1);
+  return (
+    <View style={styles.chartRow}>
+      {data.map((item) => (
+        <View key={item.day} style={styles.chartBarWrap}>
+          <View
+            style={[
+              styles.chartBar,
+              { height: Math.max(12, (item.value / maxValue) * 64), backgroundColor: color },
+            ]}
+          />
+          <Text style={styles.chartLabel}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
-export default function HomeScreen({ isActive, bottomInset, onOpenPlanner, onOpenTasks }) {
+export default function HomeScreen({
+  isActive,
+  bottomInset,
+  onChangeTheme,
+  onOpenPlanner,
+  onOpenTasks,
+  theme,
+  themeKey,
+}) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
   const [tasks, setTasks] = useState([]);
+  const [insights, setInsights] = useState(null);
+  const [dashboardConfig, setDashboardConfig] = useState(DEFAULT_DASHBOARD_CONFIG);
+  const [activeTimer, setActiveTimer] = useState(null);
   const notificationListener = useRef();
   const responseListener = useRef();
 
-  const loadTasks = useCallback(() => {
-    try {
-      setTasks(getTasksWithCategories());
-    } catch (error) {
-      console.error("Error loading tasks:", error);
-    }
+  const loadHomeData = useCallback(async () => {
+    const allTasks = getTasksWithDetails();
+    setTasks(allTasks);
+    setInsights(getTaskInsights());
+    setActiveTimer(getActiveTimer());
+    setDashboardConfig(await loadDashboardConfig());
   }, []);
 
   useEffect(() => {
     requestNotificationPermissions();
-    loadTasks();
+    loadHomeData();
 
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const { taskTitle } = response.notification.request.content.data;
-
       Alert.alert("Task Reminder", `Reminder received for "${taskTitle || "your task"}".`, [
         { text: "Later", style: "cancel" },
         { text: "Open tasks", onPress: onOpenTasks },
@@ -50,28 +84,22 @@ export default function HomeScreen({ isActive, bottomInset, onOpenPlanner, onOpe
 
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "active") {
-        loadTasks();
+        loadHomeData();
       }
     });
 
     return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
-
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
       subscription.remove();
     };
-  }, [loadTasks, onOpenTasks]);
+  }, [loadHomeData, onOpenTasks]);
 
   useEffect(() => {
     if (isActive) {
-      loadTasks();
+      loadHomeData();
     }
-  }, [isActive, loadTasks]);
+  }, [isActive, loadHomeData]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -83,236 +111,255 @@ export default function HomeScreen({ isActive, bottomInset, onOpenPlanner, onOpe
     return () => clearTimeout(timeoutId);
   }, [tasks]);
 
-  const pendingTasks = useMemo(() => tasks.filter((task) => task.completed === 0), [tasks]);
-  const completedCount = tasks.length - pendingTasks.length;
-  const overdueCount = pendingTasks.filter(
-    (task) => task.due_date && new Date(task.due_date) < new Date(),
-  ).length;
-  const todayCount = pendingTasks.filter((task) => {
-    if (!task.due_date) {
-      return false;
-    }
+  const pendingTasks = useMemo(() => tasks.filter((task) => task.status !== "Done"), [tasks]);
+  const nextDueTask = useMemo(() => {
+    const scheduledPendingTasks = pendingTasks
+      .filter((task) => task.due_date)
+      .sort((leftTask, rightTask) => new Date(leftTask.due_date) - new Date(rightTask.due_date));
 
-    return new Date(task.due_date).toDateString() === new Date().toDateString();
-  }).length;
-  const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+    return scheduledPendingTasks[0] || pendingTasks[0] || null;
+  }, [pendingTasks]);
+  const completionSeries = useMemo(
+    () => buildSevenDaySeries(insights?.weekly_completion || [], "completed"),
+    [insights],
+  );
+  const burndownSeries = useMemo(() => buildBurndownSeries(tasks), [tasks]);
+  const weeklyReport = useMemo(
+    () =>
+      buildWeeklyReport({
+        insights: insights || { total_tasks: 0, done_tasks: 0, overdue_tasks: 0 },
+        tasks,
+      }),
+    [insights, tasks],
+  );
+
+  const updateDashboardConfig = async (key, value) => {
+    const nextConfig = { ...dashboardConfig, [key]: value };
+    setDashboardConfig(nextConfig);
+    await saveDashboardConfig(nextConfig);
+  };
+
   const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 
-  const upcomingTasks = useMemo(
-    () =>
-      pendingTasks
-        .filter((task) => task.due_date)
-        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
-        .slice(0, PREVIEW_LIMIT),
-    [pendingTasks],
-  );
-
-  const previewTasks = upcomingTasks.length > 0 ? upcomingTasks : pendingTasks.slice(0, PREVIEW_LIMIT);
-
-  const formatDisplayDate = (isoString) => {
-    if (!isoString) {
-      return "No deadline";
-    }
-
-    return new Date(isoString).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#07111F" />
-
+      <StatusBar barStyle="light-content" backgroundColor={theme?.gradient?.[0] || "#07111F"} />
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingBottom: bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.eyebrow}>Task flow</Text>
-            <Text style={styles.title}>Daily Focus</Text>
-            <Text style={styles.subtitle}>
-              A calmer way to begin. Keep your day clear, steady, and under your control.
+          <View style={styles.headerText}>
+            <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>
+              Task flow
             </Text>
-            <View style={styles.datePill}>
-              <Ionicons name="sparkles-outline" size={14} color="#C4B5FD" />
-              <Text style={styles.datePillText}>{todayLabel}</Text>
-            </View>
+            <Text style={[styles.title, isCompact && styles.titleCompact, { color: theme?.text || "#F8FAFC" }]}>
+              Daily Focus
+            </Text>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: theme?.muted || "#94A3B8" }]}>
+              Track progress, customize the dashboard, and keep the week visible without
+              leaving your local workspace.
+            </Text>
           </View>
           <View style={styles.scorePill}>
-            <Text style={styles.scoreValue}>{progress}%</Text>
-            <Text style={styles.scoreLabel}>on track</Text>
+            <Text style={styles.scoreValue}>{insights?.done_tasks || 0}</Text>
+            <Text style={styles.scoreLabel}>completed</Text>
           </View>
         </View>
 
-        <LinearGradient colors={["rgba(37,99,235,0.95)", "rgba(15,118,110,0.9)"]} style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{pendingTasks.length}</Text>
-              <Text style={styles.heroStatLabel}>Active now</Text>
-            </View>
-            <View style={styles.heroDivider} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{todayCount}</Text>
-              <Text style={styles.heroStatLabel}>Due today</Text>
-            </View>
-            <View style={styles.heroDivider} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>{overdueCount}</Text>
-              <Text style={styles.heroStatLabel}>Need rescue</Text>
-            </View>
-          </View>
-
+        <LinearGradient colors={[theme?.accent || "#2563EB", "#0F766E"]} style={styles.heroCard}>
+          <Text style={styles.heroDate}>{todayLabel}</Text>
           <Text style={styles.heroHeadline}>
-            {pendingTasks.length > 0
-              ? "You already know what matters. Let’s move the next few things forward."
-              : "A fresh space for a fresh start. Add one task and build momentum from there."}
+            {pendingTasks.length
+              ? `${pendingTasks.length} active tasks are in motion. Keep the next few clean and finishable.`
+              : "A fresh workspace is ready. Add one meaningful task and create momentum."}
           </Text>
-
+          <Text style={styles.heroMeta}>
+            {insights?.overdue_tasks || 0} overdue | {minutesToLabel(insights?.tracked_minutes || 0)} tracked this week
+          </Text>
+          {activeTimer ? (
+            <Text style={styles.heroMeta}>Timer running: {activeTimer.task_title}</Text>
+          ) : null}
           <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.primaryAction} activeOpacity={0.9} onPress={onOpenTasks}>
-              <Ionicons name="grid-outline" size={18} color="#0B172A" />
+            <TouchableOpacity style={styles.primaryAction} onPress={onOpenTasks}>
               <Text style={styles.primaryActionText}>Open tasks</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.secondaryAction} activeOpacity={0.9} onPress={onOpenPlanner}>
-              <Ionicons name="add-outline" size={18} color="#F8FAFC" />
+            <TouchableOpacity style={styles.secondaryAction} onPress={onOpenPlanner}>
               <Text style={styles.secondaryActionText}>Plan task</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
 
         <View style={styles.metricRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{completedCount}</Text>
-            <Text style={styles.metricLabel}>Completed</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{tasks.length}</Text>
-            <Text style={styles.metricLabel}>All tasks</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, overdueCount > 0 && styles.metricValueAlert]}>
-              {overdueCount}
-            </Text>
-            <Text style={styles.metricLabel}>Overdue</Text>
-          </View>
+          <MetricCard label="All tasks" value={insights?.total_tasks || 0} />
+          <MetricCard label="In progress" value={insights?.in_progress_tasks || 0} />
+          <MetricCard label="Scheduled" value={insights?.scheduled_tasks || 0} />
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Coming Up</Text>
-          <TouchableOpacity onPress={onOpenTasks}>
-            <Text style={styles.sectionLink}>See everything</Text>
-          </TouchableOpacity>
-        </View>
-
-        {previewTasks.length > 0 ? (
-          previewTasks.map((task) => (
+        <View style={styles.card}>
+          <SectionHeader title="Next due task" action={<TouchableOpacity onPress={onOpenTasks}><Text style={styles.linkText}>See all</Text></TouchableOpacity>} />
+          {nextDueTask ? (
             <TouchableOpacity
-              key={task.id}
-              style={[styles.taskCard, { borderColor: `${task.category_color || "#2563EB"}55` }]}
-              activeOpacity={0.88}
+              style={[styles.taskCard, { borderColor: `${nextDueTask.project_color || theme?.accent}55` }]}
               onPress={onOpenTasks}
             >
-              <View style={styles.taskMetaRow}>
-                <View
-                  style={[
-                    styles.categoryPill,
-                    { backgroundColor: `${task.category_color || "#2563EB"}20` },
-                  ]}
-                >
-                  <Text style={[styles.categoryPillText, { color: task.category_color || "#93C5FD" }]}>
-                    {task.category_name || "General"}
-                  </Text>
-                </View>
-                <Text style={styles.priorityText}>{task.priority}</Text>
-              </View>
-
-              <Text style={styles.taskTitle} numberOfLines={2}>
-                {task.title}
+              <Text style={styles.taskTitle}>{nextDueTask.title}</Text>
+              <Text style={styles.taskMeta}>
+                {nextDueTask.status} | {nextDueTask.project_name || "Project"} |{" "}
+                {nextDueTask.due_date
+                  ? new Date(nextDueTask.due_date).toLocaleString()
+                  : "No deadline"}
               </Text>
-              <Text style={styles.taskDate}>{formatDisplayDate(task.due_date)}</Text>
+              {nextDueTask.description ? (
+                <Text style={styles.taskMeta}>{nextDueTask.description}</Text>
+              ) : null}
             </TouchableOpacity>
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Ionicons name="sparkles-outline" size={42} color="#7DD3FC" />
-            <Text style={styles.emptyTitle}>No tasks yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Start with one small promise to yourself. The rest of the rhythm will follow.
+          ) : (
+            <Text style={styles.cardText}>No active tasks yet.</Text>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <SectionHeader title="Theme" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.themeRow}>
+            {Object.values(THEME_OPTIONS).map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.themeChip, themeKey === item.key && styles.themeChipActive]}
+                onPress={() => onChangeTheme?.(item.key)}
+              >
+                <View style={[styles.themeDot, { backgroundColor: item.accent }]} />
+                <Text style={styles.themeChipText}>{item.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.card}>
+          <SectionHeader title="Dashboard customization" />
+          <ToggleRow
+            label="Completion stats"
+            value={dashboardConfig.showCompletionStats}
+            onValueChange={(value) => updateDashboardConfig("showCompletionStats", value)}
+          />
+          <ToggleRow
+            label="Weekly report"
+            value={dashboardConfig.showWeeklyReport}
+            onValueChange={(value) => updateDashboardConfig("showWeeklyReport", value)}
+          />
+          <ToggleRow
+            label="Burn-down chart"
+            value={dashboardConfig.showBurndown}
+            onValueChange={(value) => updateDashboardConfig("showBurndown", value)}
+          />
+          <ToggleRow
+            label="Time tracking"
+            value={dashboardConfig.showTimeTracking}
+            onValueChange={(value) => updateDashboardConfig("showTimeTracking", value)}
+          />
+        </View>
+
+        {dashboardConfig.showCompletionStats ? (
+          <View style={styles.card}>
+            <SectionHeader title="Task completion stats" />
+            <MiniBars color={theme?.accent || "#2563EB"} data={completionSeries} />
+          </View>
+        ) : null}
+
+        {dashboardConfig.showWeeklyReport ? (
+          <View style={styles.card}>
+            <SectionHeader title="Weekly performance report" />
+            <Text style={styles.cardText}>Completion rate: {weeklyReport.completionRate}%</Text>
+            <Text style={styles.cardText}>Overdue share: {weeklyReport.overdueRate}%</Text>
+            {weeklyReport.focusTasks.length ? (
+              weeklyReport.focusTasks.map((task) => (
+                <Text key={task.id} style={styles.cardText}>
+                  Focus next: {task.title}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.cardText}>No blocked or active focus tasks right now.</Text>
+            )}
+          </View>
+        ) : null}
+
+        {dashboardConfig.showBurndown ? (
+          <View style={styles.card}>
+            <SectionHeader title="Burn-down trend" />
+            <MiniBars color="#F59E0B" data={burndownSeries} />
+          </View>
+        ) : null}
+
+        {dashboardConfig.showTimeTracking ? (
+          <View style={styles.card}>
+            <SectionHeader title="Time tracking" />
+            <Text style={styles.cardText}>
+              Tracked this week: {minutesToLabel(insights?.tracked_minutes || 0)}
+            </Text>
+            <Text style={styles.cardText}>
+              Estimated queued work: {minutesToLabel(insights?.estimated_minutes || 0)}
             </Text>
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function MetricCard({ label, value }) {
+  return (
+    <View style={styles.metricCard}>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({ action, title }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {action}
+    </View>
+  );
+}
+
+function ToggleRow({ label, onValueChange, value }) {
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={styles.cardText}>{label}</Text>
+      <Switch value={value} onValueChange={onValueChange} trackColor={{ true: "#2563EB" }} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    gap: 18,
-  },
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 18, gap: 18 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 16,
   },
+  headerText: { flex: 1 },
   eyebrow: {
-    color: "#7DD3FC",
     fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 1.1,
     marginBottom: 8,
   },
-  title: {
-    color: "#F8FAFC",
-    fontSize: 34,
-    fontWeight: "900",
-    letterSpacing: -1,
-  },
-  subtitle: {
-    color: "#94A3B8",
-    fontSize: 15,
-    lineHeight: 22,
-    maxWidth: 250,
-    marginTop: 8,
-  },
-  datePill: {
-    marginTop: 14,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(76, 29, 149, 0.24)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(196, 181, 253, 0.18)",
-  },
-  datePillText: {
-    color: "#E9D5FF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+  title: { fontSize: 34, fontWeight: "900", letterSpacing: -1 },
+  titleCompact: { fontSize: 30 },
+  subtitle: { fontSize: 15, lineHeight: 22, marginTop: 8 },
+  subtitleCompact: { fontSize: 14, lineHeight: 20 },
   scorePill: {
     backgroundColor: "rgba(15, 23, 42, 0.72)",
     borderRadius: 22,
@@ -323,57 +370,19 @@ const styles = StyleSheet.create({
     borderColor: "rgba(125, 211, 252, 0.18)",
     alignItems: "center",
   },
-  scoreValue: {
-    color: "#F8FAFC",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  scoreLabel: {
-    color: "#8FA5BF",
+  scoreValue: { color: "#F8FAFC", fontSize: 22, fontWeight: "900" },
+  scoreLabel: { color: "#8FA5BF", fontSize: 12, fontWeight: "700", marginTop: 2 },
+  heroCard: { borderRadius: 30, padding: 22, gap: 14 },
+  heroDate: {
+    color: "#E0E7FF",
     fontSize: 12,
     fontWeight: "700",
-    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
-  heroCard: {
-    borderRadius: 30,
-    padding: 22,
-    gap: 18,
-  },
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  heroStat: {
-    flex: 1,
-  },
-  heroDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginHorizontal: 10,
-  },
-  heroStatValue: {
-    color: "#FFFFFF",
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  heroStatLabel: {
-    color: "rgba(255,255,255,0.76)",
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-  heroHeadline: {
-    color: "#F8FAFC",
-    fontSize: 20,
-    lineHeight: 28,
-    fontWeight: "800",
-  },
-  heroActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  heroHeadline: { color: "#F8FAFC", fontSize: 20, lineHeight: 28, fontWeight: "800" },
+  heroMeta: { color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: "700" },
+  heroActions: { flexDirection: "row", gap: 12 },
   primaryAction: {
     flex: 1,
     minHeight: 50,
@@ -381,14 +390,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
   },
-  primaryActionText: {
-    color: "#0B172A",
-    fontSize: 15,
-    fontWeight: "800",
-  },
+  primaryActionText: { color: "#0B172A", fontSize: 15, fontWeight: "800" },
   secondaryAction: {
     flex: 1,
     minHeight: 50,
@@ -398,18 +401,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
   },
-  secondaryActionText: {
-    color: "#F8FAFC",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  metricRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  secondaryActionText: { color: "#F8FAFC", fontSize: 15, fontWeight: "800" },
+  metricRow: { flexDirection: "row", gap: 12 },
   metricCard: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.76)",
@@ -419,95 +413,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(148, 163, 184, 0.14)",
   },
-  metricValue: {
-    color: "#F8FAFC",
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  metricValueAlert: {
-    color: "#FCA5A5",
-  },
-  metricLabel: {
-    color: "#8FA5BF",
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 6,
+  metricValue: { color: "#F8FAFC", fontSize: 24, fontWeight: "900" },
+  metricLabel: { color: "#8FA5BF", fontSize: 13, fontWeight: "700", marginTop: 6 },
+  card: {
+    backgroundColor: "rgba(15, 23, 42, 0.76)",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.14)",
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  sectionTitle: {
-    color: "#F8FAFC",
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  sectionLink: {
-    color: "#7DD3FC",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  taskCard: {
-    backgroundColor: "rgba(15, 23, 42, 0.76)",
-    borderRadius: 24,
-    padding: 18,
+  sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
+  cardText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21 },
+  themeRow: { gap: 10, paddingRight: 18 },
+  themeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.16)",
   },
-  taskMetaRow: {
+  themeChipActive: {
+    borderColor: "rgba(96,165,250,0.6)",
+    backgroundColor: "rgba(37,99,235,0.18)",
+  },
+  themeDot: { width: 12, height: 12, borderRadius: 6 },
+  themeChipText: { color: "#F8FAFC", fontWeight: "700" },
+  toggleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
-    gap: 12,
   },
-  categoryPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  categoryPillText: {
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  priorityText: {
-    color: "#FCD34D",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  taskTitle: {
-    color: "#F8FAFC",
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 24,
-  },
-  taskDate: {
-    color: "#8FA5BF",
-    fontSize: 13,
-    fontWeight: "600",
+  chartRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 10,
     marginTop: 8,
   },
-  emptyCard: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.76)",
-    borderRadius: 28,
-    paddingHorizontal: 24,
-    paddingVertical: 36,
+  chartBarWrap: { flex: 1, alignItems: "center", gap: 8 },
+  chartBar: { width: "100%", borderRadius: 999 },
+  chartLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "700" },
+  linkText: { color: "#7DD3FC", fontSize: 13, fontWeight: "700" },
+  taskCard: {
     borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.14)",
-    gap: 10,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    marginTop: 4,
   },
-  emptyTitle: {
-    color: "#F8FAFC",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  emptySubtitle: {
-    color: "#94A3B8",
-    fontSize: 14,
-    lineHeight: 22,
-    textAlign: "center",
-  },
+  taskTitle: { color: "#F8FAFC", fontSize: 16, fontWeight: "800" },
+  taskMeta: { color: "#94A3B8", fontSize: 13, marginTop: 6 },
 });

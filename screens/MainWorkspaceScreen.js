@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { THEME_OPTIONS } from "../utils/preferences";
 import AddTaskScreen from "./AddTaskScreen";
 import HomeScreen from "./HomeScreen";
 import TasksScreen from "./TasksScreen";
@@ -26,7 +27,7 @@ const TABS = [
 
 const getPageWidth = (width) => (width > 0 ? width : Dimensions.get("window").width);
 
-export default function MainWorkspaceScreen() {
+export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   const pagerRef = useRef(null);
   const previousIndexRef = useRef(0);
   const { width } = useWindowDimensions();
@@ -43,6 +44,8 @@ export default function MainWorkspaceScreen() {
   });
 
   const bottomInset = Math.max(insets.bottom + 96, 118);
+  const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.midnight;
+  const isCompact = width < 390;
 
   const checkForAppUpdates = useCallback(async () => {
     if (__DEV__ || !Updates.isEnabled) {
@@ -149,6 +152,8 @@ export default function MainWorkspaceScreen() {
         const isActive = activeIndex === index;
         return {
           ...tab,
+          shortLabel:
+            tab.key === "home" ? "Home" : tab.key === "planner" ? "Plan" : tab.label,
           index,
           isActive,
           iconName: isActive ? tab.activeIcon : tab.icon,
@@ -159,7 +164,7 @@ export default function MainWorkspaceScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <LinearGradient colors={["#07111F", "#0B172A", "#122033"]} style={styles.gradient}>
+      <LinearGradient colors={theme.gradient} style={styles.gradient}>
         <View pointerEvents="none" style={styles.backgroundLayer}>
           <View style={styles.blobAmber} />
           <View style={styles.blobBlue} />
@@ -236,6 +241,9 @@ export default function MainWorkspaceScreen() {
               bottomInset={bottomInset}
               onOpenTasks={() => goToIndex(1)}
               onOpenPlanner={() => openPlanner(null, 0)}
+              onChangeTheme={onChangeTheme}
+              theme={theme}
+              themeKey={themeKey}
             />
           </View>
 
@@ -244,6 +252,7 @@ export default function MainWorkspaceScreen() {
               isActive={activeIndex === 1}
               bottomInset={bottomInset}
               onOpenPlanner={(task) => openPlanner(task ?? null, 1)}
+              theme={theme}
             />
           </View>
 
@@ -254,6 +263,7 @@ export default function MainWorkspaceScreen() {
               taskToEdit={plannerTask}
               onCancel={handlePlannerCancel}
               onSaved={handlePlannerSaved}
+              theme={theme}
             />
           </View>
         </Animated.ScrollView>
@@ -280,10 +290,10 @@ export default function MainWorkspaceScreen() {
                 }}
               >
                 <View style={[styles.iconWrap, item.isActive && styles.iconWrapActive]}>
-                  <Ionicons name={item.iconName} size={item.index === 2 ? 24 : 20} color="#F8FAFC" />
+                  <Ionicons name={item.iconName} size={item.index === 2 ? 22 : 18} color="#F8FAFC" />
                 </View>
                 <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
-                  {item.label}
+                  {isCompact ? item.shortLabel : item.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -339,8 +349,8 @@ const styles = StyleSheet.create({
   },
   bottomWrap: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 18,
+    right: 18,
     bottom: 0,
   },
   updateBannerWrap: {
@@ -410,15 +420,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    padding: 10,
-    borderRadius: 28,
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 22,
     backgroundColor: "rgba(7, 17, 31, 0.74)",
     borderWidth: 1,
     borderColor: "rgba(148, 163, 184, 0.18)",
   },
   bottomBarBlur: {
-    borderRadius: 28,
+    borderRadius: 22,
     overflow: "hidden",
     shadowColor: "#020617",
     shadowOpacity: 0.34,
@@ -430,18 +441,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 20,
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 16,
   },
   navButtonActive: {
     backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(148, 163, 184, 0.12)",
@@ -451,7 +462,7 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     color: "#8FA5BF",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
   navLabelActive: {

@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { initDatabase } from "./database";
+import { getPreference, initDatabase, setPreference } from "./database";
 import MainWorkspaceScreen from "./screens/MainWorkspaceScreen";
 
 export default function App() {
   const [isDbReady, setIsDbReady] = useState(false);
+  const [themeKey, setThemeKey] = useState("midnight");
 
   useEffect(() => {
     try {
       initDatabase();
+      setThemeKey(getPreference("theme", "midnight"));
       setIsDbReady(true);
     } catch (error) {
       console.error("Failed to initialize database:", error);
@@ -27,7 +29,13 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <MainWorkspaceScreen />
+      <MainWorkspaceScreen
+        themeKey={themeKey}
+        onChangeTheme={(nextThemeKey) => {
+          setPreference("theme", nextThemeKey);
+          setThemeKey(nextThemeKey);
+        }}
+      />
     </SafeAreaProvider>
   );
 }
