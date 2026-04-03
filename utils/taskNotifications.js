@@ -25,6 +25,9 @@ export const REMINDER_OPTIONS = [
   { label: "1 week before", value: 10080 },
 ];
 
+export const normalizeReminderMinutes = (minutes) =>
+  minutes === null || minutes === undefined ? 1440 : minutes;
+
 const ensureNotificationChannel = async () => {
   if (Platform.OS !== "android") {
     return;
@@ -77,7 +80,7 @@ const getReminderTime = (task) => {
     return null;
   }
 
-  const reminderMinutes = task.reminder_minutes ?? 1440;
+  const reminderMinutes = normalizeReminderMinutes(task.reminder_minutes);
   const reminderTime =
     reminderMinutes > 0
       ? new Date(dueDate.getTime() - reminderMinutes * 60 * 1000)
@@ -166,6 +169,7 @@ export const syncTaskNotifications = async (tasks) => {
 };
 
 export const getReminderLabel = (minutes) => {
-  const option = REMINDER_OPTIONS.find((item) => item.value === minutes);
+  const normalizedMinutes = normalizeReminderMinutes(minutes);
+  const option = REMINDER_OPTIONS.find((item) => item.value === normalizedMinutes);
   return option ? option.label : "Custom";
 };

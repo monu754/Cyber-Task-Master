@@ -1,13 +1,8 @@
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { initDatabase } from "./database";
-import AddTaskScreen from "./screens/AddTaskScreen";
-import HomeScreen from "./screens/HomeScreen";
-import TasksScreen from "./screens/TasksScreen";
-
-const Stack = createNativeStackNavigator();
+import MainWorkspaceScreen from "./screens/MainWorkspaceScreen";
 
 export default function App() {
   const [isDbReady, setIsDbReady] = useState(false);
@@ -15,7 +10,6 @@ export default function App() {
   useEffect(() => {
     try {
       initDatabase();
-      console.log("Database Engine Initialized");
       setIsDbReady(true);
     } catch (error) {
       console.error("Failed to initialize database:", error);
@@ -25,32 +19,23 @@ export default function App() {
   if (!isDbReady) {
     return (
       <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#020617" />
-        <ActivityIndicator size="large" color="#6366F1" />
+        <StatusBar barStyle="light-content" backgroundColor="#07111F" />
+        <ActivityIndicator size="large" color="#2563EB" />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: "fade",
-        }}
-      >
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Tasks" component={TasksScreen} />
-        <Stack.Screen name="AddTask" component={AddTaskScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <MainWorkspaceScreen />
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "#07111F",
     justifyContent: "center",
     alignItems: "center",
   },

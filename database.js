@@ -87,10 +87,11 @@ export const createTask = ({
   priority = 'Medium',
   categoryId = 1,
   dueDate = null,
+  reminderMinutes = 1440,
 }) => {
   return db.runSync(
-    'INSERT INTO tasks (title, description, priority, category_id, due_date, completed) VALUES (?, ?, ?, ?, ?, ?)',
-    [title, description, priority, categoryId, dueDate, 0]
+    'INSERT INTO tasks (title, description, priority, category_id, due_date, completed, reminder_minutes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [title, description, priority, categoryId, dueDate, 0, reminderMinutes]
   );
 };
 
@@ -101,10 +102,11 @@ export const updateTask = ({
   priority = 'Medium',
   categoryId = 1,
   dueDate = null,
+  reminderMinutes = 1440,
 }) => {
   return db.runSync(
-    'UPDATE tasks SET title = ?, description = ?, priority = ?, category_id = ?, due_date = ? WHERE id = ?',
-    [title, description, priority, categoryId, dueDate, id]
+    'UPDATE tasks SET title = ?, description = ?, priority = ?, category_id = ?, due_date = ?, reminder_minutes = ? WHERE id = ?',
+    [title, description, priority, categoryId, dueDate, reminderMinutes, id]
   );
 };
 
