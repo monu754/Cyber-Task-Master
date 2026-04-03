@@ -41,6 +41,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
     isChecking: false,
     isDownloading: false,
     error: "",
+    unsupportedReason: "",
   });
 
   const bottomInset = Math.max(insets.bottom + 96, 118);
@@ -49,10 +50,24 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
 
   const checkForAppUpdates = useCallback(async () => {
     if (__DEV__ || !Updates.isEnabled) {
+      setUpdateState((current) => ({
+        ...current,
+        isChecking: false,
+        isAvailable: false,
+        isDownloading: false,
+        unsupportedReason: __DEV__
+          ? "In-app updates are disabled in local development builds. Install an EAS preview or production build to test updates."
+          : "This installed build does not support Expo Updates. Install an EAS preview or production build linked to your update channel.",
+      }));
       return;
     }
 
-    setUpdateState((current) => ({ ...current, isChecking: true, error: "" }));
+    setUpdateState((current) => ({
+      ...current,
+      isChecking: true,
+      error: "",
+      unsupportedReason: "",
+    }));
 
     try {
       const result = await Updates.checkForUpdateAsync();
@@ -74,6 +89,13 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
 
   const applyAvailableUpdate = useCallback(async () => {
     if (__DEV__ || !Updates.isEnabled) {
+      setUpdateState((current) => ({
+        ...current,
+        isDownloading: false,
+        unsupportedReason: __DEV__
+          ? "In-app updates are disabled in local development builds. Install an EAS preview or production build to apply OTA updates."
+          : "This installed build does not support Expo Updates. Install an EAS preview or production build linked to your update channel.",
+      }));
       return;
     }
 
@@ -171,7 +193,11 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
           <View style={styles.blobMint} />
         </View>
 
-        {updateState.isAvailable || updateState.isChecking || updateState.isDownloading || updateState.error ? (
+        {updateState.isAvailable ||
+        updateState.isChecking ||
+        updateState.isDownloading ||
+        updateState.error ||
+        updateState.unsupportedReason ? (
           <View style={[styles.updateBannerWrap, { top: insets.top + 10 }]}>
             <BlurView intensity={30} tint="dark" style={styles.updateBannerBlur}>
               <View style={styles.updateBanner}>
@@ -184,12 +210,15 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                     ? "New update available"
                     : updateState.isDownloading
                       ? "Downloading update"
+                      : updateState.unsupportedReason
+                        ? "Updates unavailable"
                       : updateState.isChecking
                         ? "Checking for updates"
                         : "Update status"}
                 </Text>
                 <Text style={styles.updateBannerText}>
-                  {updateState.error ||
+                  {updateState.unsupportedReason ||
+                    updateState.error ||
                     (updateState.isAvailable
                       ? "A newer version is ready. Apply it without leaving the app."
                       : updateState.isDownloading
@@ -207,7 +236,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                     {updateState.isDownloading ? "Applying..." : "Update"}
                   </Text>
                 </TouchableOpacity>
-              ) : !updateState.isDownloading ? (
+              ) : !updateState.isDownloading && !updateState.unsupportedReason ? (
                 <TouchableOpacity
                   style={styles.updateCheckButton}
                   activeOpacity={0.88}
