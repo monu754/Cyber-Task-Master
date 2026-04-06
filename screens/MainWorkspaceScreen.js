@@ -1,4 +1,4 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,10 +24,10 @@ import TasksScreen from "./TasksScreen";
 import ThemeScreen from "./ThemeScreen";
 
 const TABS = [
-  { key: "home", label: "Dashboard", icon: "home-outline", activeIcon: "home" },
-  { key: "tasks", label: "Tasks", icon: "grid-outline", activeIcon: "grid" },
-  { key: "habits", label: "Habits", icon: "repeat-outline", activeIcon: "repeat" },
-  { key: "themes", label: "Themes", icon: "color-palette-outline", activeIcon: "color-palette" },
+  { key: "home", label: "Dashboard", icon: "view-dashboard-outline", activeIcon: "view-dashboard" },
+  { key: "tasks", label: "Tasks", icon: "clipboard-text-outline", activeIcon: "clipboard-text" },
+  { key: "habits", label: "Habits", icon: "repeat-variant", activeIcon: "repeat" },
+  { key: "themes", label: "Themes", icon: "palette-outline", activeIcon: "palette" },
 ];
 
 const getPageWidth = (width) => (width > 0 ? width : Dimensions.get("window").width);
@@ -297,10 +297,10 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                 }}
               >
                 <View style={[styles.navIconWrap, item.isActive && styles.navIconWrapActive]}>
-                  <Ionicons
+                  <MaterialCommunityIcons
                     name={item.iconName}
-                    size={18}
-                    color={item.isActive ? "#F8FAFC" : "rgba(148, 163, 184, 0.78)"}
+                    size={19}
+                    color={item.isActive ? "#F8FAFC" : "rgba(148, 163, 184, 0.82)"}
                   />
                 </View>
                 <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
@@ -433,14 +433,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.02)",
   },
   navIconWrap: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
+    borderRadius: 11,
   },
   navIconWrapActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
   },
   navLabel: {
     color: "rgba(143, 165, 191, 0.8)",
