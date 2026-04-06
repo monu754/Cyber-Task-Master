@@ -118,6 +118,19 @@ const isHabitStreakBroken = (habit) => {
   return dueDate.getTime() < Date.now();
 };
 
+const isOverdueDate = (value) => {
+  if (!value) {
+    return false;
+  }
+
+  const dueDate = new Date(value);
+  if (Number.isNaN(dueDate.getTime())) {
+    return false;
+  }
+
+  return dueDate.getTime() < Date.now();
+};
+
 const computeHabitStats = (habit, completionRows) => {
   const intervalDays = habit?.recurrence === "weekly" ? 7 : 1;
   const completionDates = [...new Set(
@@ -887,18 +900,25 @@ export const completeTaskAndGenerateNext = (taskId) => {
 };
 
 export const getTaskInsights = () => {
-  const totals = db.getFirstSync(
-    `
-      SELECT
-        COUNT(*) AS total_tasks,
-        SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS done_tasks,
-        SUM(CASE WHEN status = 'In Progress' THEN 1 ELSE 0 END) AS in_progress_tasks,
-        SUM(CASE WHEN due_date IS NOT NULL THEN 1 ELSE 0 END) AS scheduled_tasks,
-        SUM(CASE WHEN due_date IS NOT NULL AND due_date < CURRENT_TIMESTAMP AND status != 'Done' THEN 1 ELSE 0 END) AS overdue_tasks,
-        COALESCE(SUM(estimated_minutes), 0) AS estimated_minutes
-      FROM tasks
-      WHERE item_type = 'task'
-    `,
+  const tasks = getTasksWithDetails();
+  const totals = tasks.reduce(
+    (summary, task) => ({
+      total_tasks: summary.total_tasks + 1,
+      done_tasks: summary.done_tasks + (task.status === "Done" ? 1 : 0),
+      in_progress_tasks: summary.in_progress_tasks + (task.status === "In Progress" ? 1 : 0),
+      scheduled_tasks: summary.scheduled_tasks + (task.due_date ? 1 : 0),
+      overdue_tasks:
+        summary.overdue_tasks + (task.status !== "Done" && isOverdueDate(task.due_date) ? 1 : 0),
+      estimated_minutes: summary.estimated_minutes + (Number(task.estimated_minutes) || 0),
+    }),
+    {
+      total_tasks: 0,
+      done_tasks: 0,
+      in_progress_tasks: 0,
+      scheduled_tasks: 0,
+      overdue_tasks: 0,
+      estimated_minutes: 0,
+    },
   );
 
   const weeklyCompletion = db.getAllSync(

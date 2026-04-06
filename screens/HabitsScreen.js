@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -202,8 +203,11 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
   );
 }
 
-export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, theme }) {
+export default function HabitsScreen({ bottomInset, dataVersion, isActive, onOpenPlanner, theme }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
+  const isSmallScreen = width < 350;
   const [habits, setHabits] = useState([]);
   const [insights, setInsights] = useState(null);
   const [search, setSearch] = useState("");
@@ -218,7 +222,7 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
     if (isActive) {
       loadHabits();
     }
-  }, [isActive, loadHabits]);
+  }, [dataVersion, isActive, loadHabits]);
 
   const filteredHabits = useMemo(() => {
     if (!search.trim()) {
@@ -292,12 +296,12 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
           <View style={styles.header}>
             <SectionBadge iconName="infinite-outline" label="Routine loop" theme={theme} />
             <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>Routine focus</Text>
-            <Text style={[styles.title, { color: theme?.text || "#F8FAFC" }]}>Habit Tracker</Text>
-            <Text style={[styles.subtitle, { color: theme?.muted || "#94A3B8" }]}>
+            <Text style={[styles.title, isCompact && styles.titleCompact, { color: theme?.text || "#F8FAFC" }]}>Habit Tracker</Text>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: theme?.muted || "#94A3B8" }]}>
               Recurring routines live here. Complete one and the next check-in is created automatically.
             </Text>
 
-            <View style={styles.metricRow}>
+            <View style={[styles.metricRow, isSmallScreen && styles.metricRowCompact]}>
               <View style={styles.metricCard}>
                 <Text style={styles.metricValue}>{insights?.total_habits || 0}</Text>
                 <Text style={styles.metricLabel}>habits</Text>
@@ -312,13 +316,13 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
               </View>
             </View>
 
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && styles.cardCompact]}>
               <Text style={styles.sectionTitle}>This week</Text>
               <HabitBars color={theme?.accent || "#2563EB"} data={consistencySeries} />
             </View>
 
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, isCompact && styles.searchInputCompact]}
               placeholder="Search habits and categories"
               placeholderTextColor="#64748B"
               value={search}
@@ -327,7 +331,12 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
           </View>
         }
         ListEmptyComponent={<Text style={styles.emptyText}>No habits yet.</Text>}
-        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(bottomInset, insets.bottom + 24) }]}
+        contentContainerStyle={[
+          styles.listContent,
+          isCompact && styles.listContentCompact,
+          isSmallScreen && styles.listContentSmall,
+          { paddingBottom: Math.max(bottomInset, insets.bottom + 24) },
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme?.accent || "#2563EB"} />
         }
@@ -346,11 +355,16 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   listContent: { paddingHorizontal: 20, paddingTop: 18, gap: 14 },
+  listContentCompact: { paddingHorizontal: 16, paddingTop: 16 },
+  listContentSmall: { paddingHorizontal: 14, paddingTop: 14 },
   header: { gap: 16, marginBottom: 8 },
   eyebrow: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.1 },
   title: { fontSize: 32, fontWeight: "900" },
+  titleCompact: { fontSize: 28 },
   subtitle: { fontSize: 15, lineHeight: 22 },
+  subtitleCompact: { fontSize: 14, lineHeight: 20 },
   metricRow: { flexDirection: "row", gap: 12 },
+  metricRowCompact: { gap: 8 },
   metricCard: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.76)",
@@ -370,6 +384,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148, 163, 184, 0.14)",
     gap: 12,
   },
+  cardCompact: { borderRadius: 20, padding: 15, gap: 10 },
   sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
   searchInput: {
     minHeight: 54,
@@ -381,6 +396,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 15,
   },
+  searchInputCompact: { minHeight: 50, borderRadius: 16, fontSize: 14 },
   habitCard: {
     backgroundColor: "rgba(15,23,42,0.76)",
     borderRadius: 24,
@@ -398,9 +414,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   badgeText: { color: "#C8D6E5", fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
-  habitTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24 },
-  metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18 },
-  availabilityText: { fontSize: 12, fontWeight: "700" },
+  habitTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24, flexShrink: 1 },
+  metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18, flexShrink: 1 },
+  availabilityText: { fontSize: 12, fontWeight: "700", flexShrink: 1 },
   availabilityToday: { color: "#A7F3D0" },
   availabilityUpcoming: { color: "#7DD3FC" },
   availabilityMissed: { color: "#FCA5A5" },

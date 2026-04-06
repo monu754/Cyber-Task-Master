@@ -42,6 +42,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   const [plannerTask, setPlannerTask] = useState(null);
   const [plannerHabit, setPlannerHabit] = useState(null);
   const [plannerType, setPlannerType] = useState(null);
+  const [dataVersion, setDataVersion] = useState(0);
   const [updateState, setUpdateState] = useState({
     isAvailable: false,
     isChecking: false,
@@ -180,6 +181,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   }, []);
 
   const handlePlannerSaved = useCallback(() => {
+    setDataVersion((current) => current + 1);
     setPlannerTask(null);
     setPlannerHabit(null);
     setPlannerType(null);
@@ -187,6 +189,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
   }, [goToIndex]);
 
   const handleHabitSaved = useCallback(() => {
+    setDataVersion((current) => current + 1);
     setPlannerTask(null);
     setPlannerHabit(null);
     setPlannerType(null);
@@ -239,6 +242,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
         >
           <View style={[styles.page, { width: pageWidth }]}>
             <HomeScreen
+              dataVersion={dataVersion}
               isActive={activeIndex === 0}
               bottomInset={bottomInset}
               onOpenTasks={() => goToIndex(1)}
@@ -255,6 +259,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
 
           <View style={[styles.page, { width: pageWidth }]}>
             <TasksScreen
+              dataVersion={dataVersion}
               isActive={activeIndex === 1}
               bottomInset={bottomInset}
               onOpenPlanner={(task) => openPlanner(task ?? null)}
@@ -264,6 +269,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
 
           <View style={[styles.page, { width: pageWidth }]}>
             <HabitsScreen
+              dataVersion={dataVersion}
               isActive={activeIndex === 2}
               bottomInset={bottomInset}
               onOpenPlanner={(habit) => openHabitPlanner(habit ?? null)}

@@ -209,11 +209,12 @@ function TaskCard({
   );
 }
 
-export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, theme }) {
+export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpenPlanner, theme }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
   const isVeryCompact = width < 360;
+  const isSmallScreen = width < 350;
   const searchPlaceholder = isVeryCompact
     ? "Search tasks"
     : isCompact
@@ -240,7 +241,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
     if (isActive) {
       loadScreenData();
     }
-  }, [isActive, loadScreenData]);
+  }, [dataVersion, isActive, loadScreenData]);
 
   const filteredTasks = useMemo(() => {
     let result = [...tasks];
@@ -378,7 +379,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
         One-time work lives here. Recurring routines now have their own habit tracker.
       </Text>
 
-      <View style={styles.searchRow}>
+      <View style={[styles.searchRow, isSmallScreen && styles.searchRowTight]}>
         <TextInput
           style={styles.searchInput}
           placeholder={searchPlaceholder}
@@ -402,7 +403,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.segmentedWrap, isCompact && styles.segmentedWrapCompact]}>
+      <View style={[styles.segmentedWrap, isCompact && styles.segmentedWrapCompact, isSmallScreen && styles.segmentedWrapSmall]}>
         {VIEW_OPTIONS.map((item) => (
           <SegmentedOption
             key={item.key}
@@ -577,7 +578,12 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
               <View style={{ height: bottomInset }} />
             )
           }
-          contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset }]}
+          contentContainerStyle={[
+            styles.listContent,
+            isCompact && styles.listContentCompact,
+            isSmallScreen && styles.listContentSmall,
+            { paddingBottom: bottomInset },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -687,6 +693,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { paddingHorizontal: 20, paddingTop: 18, gap: 14 },
   listContentCompact: { paddingHorizontal: 16, paddingTop: 16 },
+  listContentSmall: { paddingHorizontal: 14, paddingTop: 14 },
   header: { gap: 16, marginBottom: 8 },
   eyebrow: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.1 },
   title: { fontSize: 32, fontWeight: "900" },
@@ -709,6 +716,7 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "center",
   },
+  searchRowTight: { gap: 8 },
   filtersButton: {
     minHeight: 54,
     borderRadius: 18,
@@ -742,6 +750,7 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 4,
   },
+  segmentedWrapSmall: { gap: 3, padding: 3 },
   segmentedOption: {
     flex: 1,
     minHeight: 42,
@@ -796,8 +805,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
   },
-  sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
+  sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800", flex: 1, flexShrink: 1 },
   linkText: { color: "#7DD3FC", fontSize: 13, fontWeight: "700" },
   taskCard: {
     backgroundColor: "rgba(15,23,42,0.76)",
@@ -816,9 +826,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   badgeText: { color: "#C8D6E5", fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
-  taskTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24 },
-  taskDescription: { color: "#94A3B8", fontSize: 13, lineHeight: 20 },
-  metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18 },
+  taskTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24, flexShrink: 1 },
+  taskDescription: { color: "#94A3B8", fontSize: 13, lineHeight: 20, flexShrink: 1 },
+  metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18, flexShrink: 1 },
   alertText: { color: "#FCA5A5" },
   cardButtons: { flexDirection: "row", gap: 10 },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
@@ -837,7 +847,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  boardTitle: { color: "#F8FAFC", fontSize: 19, fontWeight: "800" },
+  boardTitle: { color: "#F8FAFC", fontSize: 19, fontWeight: "800", flexShrink: 1 },
   boardCount: {
     minWidth: 32,
     height: 32,
@@ -858,7 +868,7 @@ const styles = StyleSheet.create({
   },
   emptyLaneText: { color: "#90A6BC", fontSize: 13, fontWeight: "600" },
   calendarGroup: { gap: 10 },
-  calendarTitle: { color: "#F8FAFC", fontSize: 18, fontWeight: "800" },
+  calendarTitle: { color: "#F8FAFC", fontSize: 18, fontWeight: "800", flexShrink: 1 },
   timelineRow: { flexDirection: "row", gap: 12 },
   timelineTrack: { width: 20, alignItems: "center" },
   timelineDot: { width: 14, height: 14, borderRadius: 7, marginTop: 20 },
@@ -869,7 +879,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   timelineContent: { flex: 1 },
-  timelineDate: { color: "#7DD3FC", fontSize: 13, fontWeight: "700", marginBottom: 8 },
+  timelineDate: { color: "#7DD3FC", fontSize: 13, fontWeight: "700", marginBottom: 8, flexShrink: 1 },
   loadMoreButton: {
     alignSelf: "center",
     minWidth: 140,
