@@ -17,17 +17,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   completeTaskAndGenerateNext,
-  getActiveTimer,
-  getProjects,
   getTasksWithDetails,
-  getTags,
-  getWorkspaces,
   removeTask,
   setTaskStatus,
-  startTaskTimer,
-  stopActiveTimer,
 } from "../database";
-import { minutesToLabel } from "../utils/analytics";
 import { loadSavedFilters, saveSavedFilters } from "../utils/preferences";
 import { cancelTaskNotifications, scheduleSingleNotification } from "../utils/taskNotifications";
 
@@ -119,13 +112,10 @@ function TaskCard({
   item,
   onDelete,
   onEdit,
-  onStartTimer,
   onToggleDone,
   onUpdateStatus,
-  timerTaskId,
   theme,
 }) {
-  const isActiveTimer = timerTaskId === item.id;
   const dueLabel = item.due_date
     ? new Date(item.due_date).toLocaleString(undefined, {
         month: "short",
@@ -133,10 +123,10 @@ function TaskCard({
         hour: "2-digit",
         minute: "2-digit",
       })
-    : "No due date";
+    : null;
 
   return (
-    <View style={[styles.taskCard, { borderColor: `${item.project_color || theme.accent}55` }]}>
+    <View style={[styles.taskCard, { borderColor: `${item.category_color || theme.accent}55` }]}>
       <View style={styles.cardTop}>
         <View style={styles.badgeRow}>
           {item.category_name ? (
@@ -157,9 +147,6 @@ function TaskCard({
             </View>
           ) : null}
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{item.project_name || "Project"}</Text>
-          </View>
-          <View style={styles.badge}>
             <Text style={styles.badgeText}>{item.priority}</Text>
           </View>
         </View>
@@ -179,17 +166,15 @@ function TaskCard({
         </Text>
       ) : null}
 
-      <Text style={styles.metaText}>
-        {item.status} | {dueLabel} | {minutesToLabel(item.tracked_minutes || 0)} tracked
-      </Text>
-      {item.workspace_name ? (
-        <Text style={styles.metaText}>Workspace: {item.workspace_name}</Text>
-      ) : null}
-      {item.tags?.length ? (
-        <Text style={styles.metaText}>Tags: {item.tags.map((tag) => tag.name).join(", ")}</Text>
-      ) : null}
+      <Text style={styles.metaText}>Status: {item.status}</Text>
+      {dueLabel ? <Text style={styles.metaText}>Deadline: {dueLabel}</Text> : null}
       {item.hasBlockingDependency ? (
-        <Text style={[styles.metaText, styles.alertText]}>Blocked by another task</Text>
+        <Text style={[styles.metaText, styles.alertText]}>Waiting on another task to finish first.</Text>
+      ) : null}
+      {item.dependencies?.length ? (
+        <Text style={styles.metaText}>
+          Depends on: {item.dependencies.map((dependency) => dependency.depends_on_title).join(", ")}
+        </Text>
       ) : null}
 
       <HorizontalChips>
@@ -207,13 +192,6 @@ function TaskCard({
         <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(item)}>
           <Ionicons name="create-outline" size={18} color="#7DD3FC" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onStartTimer(item)}>
-          <Ionicons
-            name={isActiveTimer ? "pause-outline" : "play-outline"}
-            size={18}
-            color="#A7F3D0"
-          />
-        </TouchableOpacity>
         <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(item.id)}>
           <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
         </TouchableOpacity>
@@ -230,33 +208,22 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
   const searchPlaceholder = isVeryCompact
     ? "Search tasks"
     : isCompact
-      ? "Search tasks, projects, notes"
-      : "Search tasks, notes, projects, workspaces";
+      ? "Search tasks and notes"
+      : "Search tasks, notes, and categories";
   const [tasks, setTasks] = useState([]);
   const [savedFilters, setSavedFilters] = useState([]);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [tags, setTags] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [activeTimer, setActiveTimer] = useState(null);
   const [viewMode, setViewMode] = useState("list");
   const [search, setSearch] = useState("");
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [filters, setFilters] = useState({
     status: "all",
     priority: "all",
-    workspaceId: "all",
-    projectId: "all",
-    tag: "all",
   });
 
   const loadScreenData = useCallback(async () => {
     setTasks(getTasksWithDetails());
-    setWorkspaces(getWorkspaces());
-    setProjects(getProjects());
-    setTags(getTags());
-    setActiveTimer(getActiveTimer());
     setSavedFilters(await loadSavedFilters());
   }, []);
 
@@ -272,7 +239,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
     if (search.trim()) {
       const query = search.trim().toLowerCase();
       result = result.filter((task) =>
-        [task.title, task.description, task.project_name, task.workspace_name, task.category_name]
+        [task.title, task.description, task.category_name]
           .join(" ")
           .toLowerCase()
           .includes(query),
@@ -284,15 +251,6 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
     }
     if (filters.priority !== "all") {
       result = result.filter((task) => task.priority === filters.priority);
-    }
-    if (filters.workspaceId !== "all") {
-      result = result.filter((task) => task.workspace_id === filters.workspaceId);
-    }
-    if (filters.projectId !== "all") {
-      result = result.filter((task) => task.project_id === filters.projectId);
-    }
-    if (filters.tag !== "all") {
-      result = result.filter((task) => task.tags.some((tag) => tag.name === filters.tag));
     }
 
     return result;
@@ -363,15 +321,6 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
     ]);
   };
 
-  const onStartTimer = (task) => {
-    if (activeTimer?.task_id === task.id) {
-      stopActiveTimer();
-    } else {
-      startTaskTimer(task.id);
-    }
-    loadScreenData();
-  };
-
   const onSaveCurrentFilter = async () => {
     const nextSavedFilters = [
       ...savedFilters,
@@ -391,10 +340,8 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
       item={item}
       onDelete={onDelete}
       onEdit={onOpenPlanner}
-      onStartTimer={onStartTimer}
       onToggleDone={onToggleDone}
       onUpdateStatus={onUpdateStatus}
-      timerTaskId={activeTimer?.task_id}
       theme={theme}
     />
   );
@@ -420,13 +367,6 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
       >
         One-time work lives here. Recurring routines now have their own habit tracker.
       </Text>
-
-      {activeTimer ? (
-        <View style={styles.timerBanner}>
-          <Ionicons name="time-outline" size={18} color="#A7F3D0" />
-          <Text style={styles.timerText}>Tracking {activeTimer.task_title}</Text>
-        </View>
-      ) : null}
 
       <View style={styles.searchRow}>
         <TextInput
@@ -514,10 +454,8 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
                 item={task}
                 onDelete={onDelete}
                 onEdit={onOpenPlanner}
-                onStartTimer={onStartTimer}
                 onToggleDone={onToggleDone}
                 onUpdateStatus={onUpdateStatus}
-                timerTaskId={activeTimer?.task_id}
                 theme={theme}
               />
             ))
@@ -548,10 +486,8 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
                 item={task}
                 onDelete={onDelete}
                 onEdit={onOpenPlanner}
-                onStartTimer={onStartTimer}
                 onToggleDone={onToggleDone}
                 onUpdateStatus={onUpdateStatus}
-                timerTaskId={activeTimer?.task_id}
                 theme={theme}
               />
             ))}
@@ -592,10 +528,8 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
                 item={task}
                 onDelete={onDelete}
                 onEdit={onOpenPlanner}
-                onStartTimer={onStartTimer}
                 onToggleDone={onToggleDone}
                 onUpdateStatus={onUpdateStatus}
-                timerTaskId={activeTimer?.task_id}
                 theme={theme}
               />
             </View>
@@ -709,54 +643,6 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
               ))}
             </FilterSection>
 
-            <FilterSection title="Workspace">
-              <FilterChip
-                label="all"
-                active={filters.workspaceId === "all"}
-                onPress={() => setFilters((current) => ({ ...current, workspaceId: "all" }))}
-              />
-              {workspaces.map((item) => (
-                <FilterChip
-                  key={item.id}
-                  label={item.name}
-                  active={filters.workspaceId === item.id}
-                  onPress={() => setFilters((current) => ({ ...current, workspaceId: item.id }))}
-                />
-              ))}
-            </FilterSection>
-
-            <FilterSection title="Project">
-              <FilterChip
-                label="all"
-                active={filters.projectId === "all"}
-                onPress={() => setFilters((current) => ({ ...current, projectId: "all" }))}
-              />
-              {projects.map((item) => (
-                <FilterChip
-                  key={item.id}
-                  label={item.name}
-                  active={filters.projectId === item.id}
-                  onPress={() => setFilters((current) => ({ ...current, projectId: item.id }))}
-                />
-              ))}
-            </FilterSection>
-
-            <FilterSection title="Tag">
-              <FilterChip
-                label="all"
-                active={filters.tag === "all"}
-                onPress={() => setFilters((current) => ({ ...current, tag: "all" }))}
-              />
-              {tags.map((item) => (
-                <FilterChip
-                  key={item.id}
-                  label={item.name}
-                  active={filters.tag === item.name}
-                  onPress={() => setFilters((current) => ({ ...current, tag: item.name }))}
-                />
-              ))}
-            </FilterSection>
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalSecondaryButton}
@@ -764,9 +650,6 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
                   setFilters({
                     status: "all",
                     priority: "all",
-                    workspaceId: "all",
-                    projectId: "all",
-                    tag: "all",
                   })
                 }
               >
@@ -797,17 +680,6 @@ const styles = StyleSheet.create({
   titleCompact: { fontSize: 28 },
   subtitle: { fontSize: 15, lineHeight: 22 },
   subtitleCompact: { fontSize: 14, lineHeight: 20 },
-  timerBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(15,118,110,0.26)",
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(167,243,208,0.14)",
-  },
-  timerText: { color: "#E6FFFA", fontWeight: "700" },
   searchInput: {
     flex: 1,
     minHeight: 54,

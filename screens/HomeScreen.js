@@ -243,7 +243,7 @@ export default function HomeScreen({
             action={<TouchableOpacity onPress={onOpenHabits}><Text style={styles.linkText}>Open</Text></TouchableOpacity>}
           />
           <Text style={styles.cardText}>
-            {habitInsights?.pending_habits || 0} habits are waiting and {habitInsights?.completed_habits || 0} have been checked off.
+            {habitInsights?.pending_habits || 0} habits are active and {habitInsights?.active_streak_habits || 0} are currently on a streak.
           </Text>
           {habitSummary.nextHabits.length ? (
             habitSummary.nextHabits.map((habit) => (
@@ -265,10 +265,10 @@ export default function HomeScreen({
             >
               <Text style={styles.taskTitle}>{nextDueTask.title}</Text>
               <Text style={styles.taskMeta}>
-                {nextDueTask.status} | {nextDueTask.project_name || "Project"} |{" "}
+                {nextDueTask.status}
                 {nextDueTask.due_date
-                  ? new Date(nextDueTask.due_date).toLocaleString()
-                  : "No deadline"}
+                  ? ` | ${new Date(nextDueTask.due_date).toLocaleString()}`
+                  : ""}
               </Text>
               {nextDueTask.description ? (
                 <Text style={styles.taskMeta}>{nextDueTask.description}</Text>
@@ -348,9 +348,9 @@ export default function HomeScreen({
         {dashboardConfig.showHabitSummary ? (
           <View style={styles.card}>
             <SectionHeader title="Habit tracker summary" />
-            <Text style={styles.cardText}>Completion rate: {habitSummary.completionRate}%</Text>
+            <Text style={styles.cardText}>Streak health: {habitSummary.completionRate}%</Text>
             <Text style={styles.cardText}>Pending habits: {habitSummary.pendingHabits}</Text>
-            <Text style={styles.cardText}>Best current streak: {habitInsights?.longest_streak || 0}</Text>
+            <Text style={styles.cardText}>Best streak: {habitInsights?.longest_streak || 0}</Text>
             {habitSummary.nextHabits.length ? (
               habitSummary.nextHabits.map((habit) => (
                 <Text key={habit.id} style={styles.cardText}>

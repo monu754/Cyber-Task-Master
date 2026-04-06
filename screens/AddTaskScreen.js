@@ -67,6 +67,7 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
+  const keyboardVerticalOffset = Platform.OS === "ios" ? Math.max(insets.top, 12) : 28;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Todo");
@@ -230,11 +231,17 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme?.gradient?.[0] || "#07111F" }]}>
       <StatusBar barStyle="light-content" backgroundColor={theme?.gradient?.[0] || "#07111F"} />
       <LinearGradient colors={theme?.gradient || ["#07111F", "#0B172A", "#122033"]} style={styles.safeArea}>
-        <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView
+          style={styles.safeArea}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={keyboardVerticalOffset}
+        >
           <ScrollView
             style={styles.container}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(bottomInset, insets.bottom + 28) }]}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            keyboardShouldPersistTaps="handled"
           >
             <View style={styles.headerText}>
               <Text style={[styles.eyebrow, { color: themeAccent }]}>Create task</Text>

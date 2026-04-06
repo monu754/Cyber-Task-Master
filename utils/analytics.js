@@ -77,7 +77,7 @@ export const buildHabitConsistencySeries = (rows) => buildSevenDaySeries(rows, "
 export const buildHabitSummary = ({ habits, insights }) => {
   const completionRate =
     insights.total_habits > 0
-      ? Math.round((insights.completed_habits / insights.total_habits) * 100)
+      ? Math.round((insights.active_streak_habits / insights.total_habits) * 100)
       : 0;
   const nextHabits = habits
     .filter((habit) => habit.status !== "Done")

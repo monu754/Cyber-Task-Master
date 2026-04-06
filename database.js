@@ -27,6 +27,7 @@ const ensureTaskColumns = () => {
   ensureColumn("tasks", "estimated_minutes", "INTEGER DEFAULT 0");
   ensureColumn("tasks", "created_at", "TEXT");
   ensureColumn("tasks", "updated_at", "TEXT");
+  ensureColumn("tasks", "habit_group_id", "INTEGER");
 };
 
 const normalizeTaskStatus = () => {
@@ -41,6 +42,9 @@ const normalizeTaskStatus = () => {
   );
   db.runSync(
     "UPDATE tasks SET item_type = CASE WHEN recurrence IS NOT NULL AND recurrence != 'none' THEN 'habit' ELSE COALESCE(item_type, 'task') END WHERE item_type IS NULL OR TRIM(item_type) = ''",
+  );
+  db.runSync(
+    "UPDATE tasks SET habit_group_id = id WHERE item_type = 'habit' AND (habit_group_id IS NULL OR habit_group_id = 0)",
   );
 };
 
@@ -77,10 +81,111 @@ const createIndexes = () => {
     CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks (project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_workspace_id ON tasks (workspace_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_item_type ON tasks (item_type, status);
+    CREATE INDEX IF NOT EXISTS idx_tasks_habit_group_id ON tasks (habit_group_id, status);
     CREATE INDEX IF NOT EXISTS idx_time_entries_task_id ON time_entries (task_id, start_time);
     CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags (task_id);
     CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies (task_id);
   `);
+};
+
+const toDayKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const diffInDays = (leftDate, rightDate) => {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((rightDate.getTime() - leftDate.getTime()) / millisecondsPerDay);
+};
+
+const isHabitStreakBroken = (habit) => {
+  if (!habit?.due_date) {
+    return false;
+  }
+
+  const dueDate = new Date(habit.due_date);
+  if (Number.isNaN(dueDate.getTime())) {
+    return false;
+  }
+
+  return dueDate.getTime() < Date.now();
+};
+
+const computeHabitStats = (habit, completionRows) => {
+  const intervalDays = habit?.recurrence === "weekly" ? 7 : 1;
+  const completionDates = [...new Set(
+    completionRows
+      .map((row) => row.due_date || row.updated_at)
+      .map((value) => toDayKey(value))
+      .filter(Boolean),
+  )]
+    .map((dayKey) => new Date(`${dayKey}T00:00:00`))
+    .sort((leftDate, rightDate) => leftDate - rightDate);
+
+  let longestStreak = 0;
+  let runningStreak = 0;
+
+  completionDates.forEach((date, index) => {
+    if (index === 0) {
+      runningStreak = 1;
+    } else {
+      const previousDate = completionDates[index - 1];
+      runningStreak = diffInDays(previousDate, date) === intervalDays ? runningStreak + 1 : 1;
+    }
+
+    longestStreak = Math.max(longestStreak, runningStreak);
+  });
+
+  let currentStreak = completionDates.length ? runningStreak : 0;
+  if (currentStreak > 0 && isHabitStreakBroken(habit)) {
+    currentStreak = 0;
+  }
+
+  const lastCompletedAt =
+    completionRows[completionRows.length - 1]?.updated_at ||
+    completionRows[completionRows.length - 1]?.due_date ||
+    null;
+
+  return {
+    total_completions: completionRows.length,
+    total_completion_days: completionDates.length,
+    current_streak: currentStreak,
+    longest_streak: longestStreak,
+    last_completed_at: lastCompletedAt,
+  };
+};
+
+const attachHabitStats = (habits) => {
+  if (habits.length === 0) {
+    return [];
+  }
+
+  const groupIds = [...new Set(habits.map((habit) => habit.habit_group_id || habit.id))];
+  const placeholders = groupIds.map(() => "?").join(", ");
+  const completionRows = db.getAllSync(
+    `
+      SELECT id, habit_group_id, due_date, updated_at
+      FROM tasks
+      WHERE item_type = 'habit'
+        AND status = 'Done'
+        AND habit_group_id IN (${placeholders})
+      ORDER BY COALESCE(due_date, updated_at) ASC, updated_at ASC, id ASC
+    `,
+    groupIds,
+  );
+  const completionRowsByGroup = createLookupMap(completionRows, "habit_group_id");
+
+  return habits.map((habit) => ({
+    ...habit,
+    ...computeHabitStats(habit, completionRowsByGroup[habit.habit_group_id || habit.id] || []),
+  }));
 };
 
 const sanitizeList = (items) =>
@@ -184,7 +289,6 @@ const attachTaskRelations = (tasks) => {
     hasBlockingDependency: (dependenciesByTask[task.id] || []).some(
       (dependency) => dependency.depends_on_status !== "Done",
     ),
-    tracked_minutes: task.tracked_minutes || 0,
     subtask_count: (subtasksByTask[task.id] || []).length,
   }));
 };
@@ -285,6 +389,7 @@ export const initDatabase = () => {
       recurrence TEXT DEFAULT 'none',
       item_type TEXT DEFAULT 'task',
       estimated_minutes INTEGER DEFAULT 0,
+      habit_group_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories (id),
@@ -431,13 +536,11 @@ const baseTasksQuery = `
          workspaces.name AS workspace_name,
          workspaces.color AS workspace_color,
          projects.name AS project_name,
-         projects.color AS project_color,
-         COALESCE(SUM(time_entries.duration_minutes), 0) AS tracked_minutes
+         projects.color AS project_color
   FROM tasks
   LEFT JOIN categories ON categories.id = tasks.category_id
   LEFT JOIN workspaces ON workspaces.id = tasks.workspace_id
   LEFT JOIN projects ON projects.id = tasks.project_id
-  LEFT JOIN time_entries ON time_entries.task_id = tasks.id
   GROUP BY tasks.id
   ORDER BY
     CASE tasks.status
@@ -463,7 +566,41 @@ const getItemsWithDetails = (itemType = null) =>
 
 export const getTasksWithDetails = () => getItemsWithDetails("task");
 
-export const getHabitsWithDetails = () => getItemsWithDetails("habit");
+export const getHabitsWithDetails = () =>
+  attachHabitStats(
+    attachTaskRelations(
+      db.getAllSync(
+        `
+          SELECT tasks.*,
+                 categories.name AS category_name,
+                 categories.color AS category_color,
+                 workspaces.name AS workspace_name,
+                 workspaces.color AS workspace_color,
+                 projects.name AS project_name,
+                 projects.color AS project_color
+          FROM tasks
+          LEFT JOIN categories ON categories.id = tasks.category_id
+          LEFT JOIN workspaces ON workspaces.id = tasks.workspace_id
+          LEFT JOIN projects ON projects.id = tasks.project_id
+          WHERE tasks.item_type = 'habit'
+            AND tasks.id IN (
+              SELECT COALESCE(
+                MAX(CASE WHEN status != 'Done' THEN id END),
+                MAX(id)
+              )
+              FROM tasks
+              WHERE item_type = 'habit'
+              GROUP BY habit_group_id
+            )
+          ORDER BY
+            CASE WHEN tasks.due_date IS NOT NULL THEN 0 ELSE 1 END ASC,
+            tasks.due_date ASC,
+            tasks.updated_at DESC,
+            tasks.id DESC
+        `,
+      ),
+    ),
+  );
 
 export const getAllItemsWithDetails = () => getItemsWithDetails();
 
@@ -478,13 +615,11 @@ export const getTaskById = (taskId) => {
              workspaces.name AS workspace_name,
              workspaces.color AS workspace_color,
              projects.name AS project_name,
-             projects.color AS project_color,
-             COALESCE(SUM(time_entries.duration_minutes), 0) AS tracked_minutes
+             projects.color AS project_color
       FROM tasks
       LEFT JOIN categories ON categories.id = tasks.category_id
       LEFT JOIN workspaces ON workspaces.id = tasks.workspace_id
       LEFT JOIN projects ON projects.id = tasks.project_id
-      LEFT JOIN time_entries ON time_entries.task_id = tasks.id
       WHERE tasks.id = ?
       GROUP BY tasks.id
     `,
@@ -515,6 +650,7 @@ export const createTask = ({
   reminderMinutes = 1440,
   recurrence = "none",
   estimatedMinutes = 0,
+  habitGroupId = null,
   tags = [],
   dependencyIds = [],
   subtasks = [],
@@ -525,8 +661,9 @@ export const createTask = ({
     `
       INSERT INTO tasks (
         title, description, priority, status, category_id, workspace_id, project_id, due_date,
-        completed, reminder_minutes, recurrence, item_type, estimated_minutes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        completed, reminder_minutes, recurrence, item_type, estimated_minutes, habit_group_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       title.trim(),
@@ -542,10 +679,18 @@ export const createTask = ({
       recurrence,
       itemType,
       Number(estimatedMinutes) || 0,
+      habitGroupId,
       now,
       now,
     ],
   );
+
+  if (itemType === "habit" && !habitGroupId) {
+    db.runSync("UPDATE tasks SET habit_group_id = ? WHERE id = ?", [
+      result.lastInsertRowId,
+      result.lastInsertRowId,
+    ]);
+  }
 
   saveTaskRelations(result.lastInsertRowId, { tags, dependencyIds, subtasks });
   return getTaskById(result.lastInsertRowId);
@@ -594,17 +739,19 @@ export const updateTask = ({
   reminderMinutes = 1440,
   recurrence = "none",
   estimatedMinutes = 0,
+  habitGroupId = null,
   tags = [],
   dependencyIds = [],
   subtasks = [],
 }) => {
+  const existingTask = getTaskById(id);
   const completed = status === "Done" ? 1 : 0;
   db.runSync(
     `
       UPDATE tasks
       SET title = ?, description = ?, priority = ?, status = ?, category_id = ?, workspace_id = ?, project_id = ?,
           due_date = ?, completed = ?, reminder_minutes = ?, recurrence = ?, item_type = ?, estimated_minutes = ?,
-          updated_at = ?
+          habit_group_id = ?, updated_at = ?
       WHERE id = ?
     `,
     [
@@ -621,6 +768,9 @@ export const updateTask = ({
       recurrence,
       itemType,
       Number(estimatedMinutes) || 0,
+      itemType === "habit"
+        ? habitGroupId || existingTask?.habit_group_id || existingTask?.id || id
+        : null,
       new Date().toISOString(),
       id,
     ],
@@ -642,6 +792,7 @@ export const updateHabit = ({
   recurrence = "daily",
   tags = [],
   status = "Todo",
+  habitGroupId = null,
 }) =>
   updateTask({
     id,
@@ -657,6 +808,7 @@ export const updateHabit = ({
     reminderMinutes,
     recurrence,
     estimatedMinutes: 0,
+    habitGroupId,
     tags,
     dependencyIds: [],
     subtasks: [],
@@ -679,6 +831,16 @@ export const toggleSubtaskCompleted = (subtaskId, completed) => {
 
 export const removeTask = (taskId) => {
   db.runSync("DELETE FROM tasks WHERE id = ?", [taskId]);
+};
+
+export const removeHabit = (habitId) => {
+  const habit = getTaskById(habitId);
+  if (!habit) {
+    return;
+  }
+
+  const groupId = habit.habit_group_id || habit.id;
+  db.runSync("DELETE FROM tasks WHERE item_type = 'habit' AND habit_group_id = ?", [groupId]);
 };
 
 export const setTaskReminderMinutes = (taskId, minutes) => {
@@ -708,12 +870,14 @@ export const completeTaskAndGenerateNext = (taskId) => {
     itemType: task.item_type || "task",
     priority: task.priority,
     status: "Todo",
+    categoryId: task.category_id || 1,
     workspaceId: task.workspace_id || 1,
     projectId: task.project_id || 1,
     dueDate: nextDueDate,
     reminderMinutes: task.reminder_minutes,
     recurrence: task.recurrence,
     estimatedMinutes: task.estimated_minutes || 0,
+    habitGroupId: task.habit_group_id || task.id,
     tags: task.tags,
     dependencyIds: [],
     subtasks: task.subtasks.map((subtask) => ({ name: subtask.title })),
@@ -779,19 +943,6 @@ export const getBurndownSnapshot = () =>
   );
 
 export const getHabitInsights = () => {
-  const totals = db.getFirstSync(
-    `
-      SELECT
-        COUNT(*) AS total_habits,
-        SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS completed_habits,
-        SUM(CASE WHEN status != 'Done' THEN 1 ELSE 0 END) AS pending_habits,
-        SUM(CASE WHEN recurrence = 'daily' THEN 1 ELSE 0 END) AS daily_habits,
-        SUM(CASE WHEN recurrence = 'weekly' THEN 1 ELSE 0 END) AS weekly_habits
-      FROM tasks
-      WHERE item_type = 'habit'
-    `,
-  );
-
   const weeklyCompletion = db.getAllSync(
     `
       SELECT substr(updated_at, 1, 10) AS day, COUNT(*) AS completed
@@ -805,68 +956,28 @@ export const getHabitInsights = () => {
   );
 
   const habits = getHabitsWithDetails();
-  const longestStreak = habits.reduce((best, habit) => {
-    if (habit.status !== "Done" || !habit.updated_at) {
-      return best;
-    }
-
-    const updated = new Date(habit.updated_at);
-    const dueDate = habit.due_date ? new Date(habit.due_date) : null;
-    if (habit.recurrence === "daily" && dueDate && updated.toDateString() === dueDate.toDateString()) {
-      return Math.max(best, 1);
-    }
-    if (habit.recurrence === "weekly" && dueDate && updated >= dueDate) {
-      return Math.max(best, 1);
-    }
-    return best;
-  }, 0);
+  const todayKey = toDayKey(new Date());
+  const completedToday = habits.filter((habit) => toDayKey(habit.last_completed_at) === todayKey).length;
+  const pendingHabits = habits.filter((habit) => habit.status !== "Done").length;
+  const longestStreak = habits.reduce(
+    (best, habit) => Math.max(best, habit.longest_streak || 0),
+    0,
+  );
+  const activeStreaks = habits.filter((habit) => (habit.current_streak || 0) > 0).length;
+  const totalCompletions = habits.reduce(
+    (total, habit) => total + (habit.total_completions || 0),
+    0,
+  );
 
   return {
-    ...totals,
+    total_habits: habits.length,
+    completed_habits: completedToday,
+    pending_habits: pendingHabits,
+    daily_habits: habits.filter((habit) => habit.recurrence === "daily").length,
+    weekly_habits: habits.filter((habit) => habit.recurrence === "weekly").length,
+    active_streak_habits: activeStreaks,
+    total_completions: totalCompletions,
     longest_streak: longestStreak,
     weekly_completion: weeklyCompletion,
   };
 };
-
-export const startTaskTimer = (taskId) => {
-  db.runSync("UPDATE time_entries SET end_time = ?, duration_minutes = CAST((julianday(?) - julianday(start_time)) * 24 * 60 AS INTEGER) WHERE end_time IS NULL", [
-    new Date().toISOString(),
-    new Date().toISOString(),
-  ]);
-
-  const result = db.runSync("INSERT INTO time_entries (task_id, start_time) VALUES (?, ?)", [
-    taskId,
-    new Date().toISOString(),
-  ]);
-  return result.lastInsertRowId;
-};
-
-export const stopActiveTimer = () => {
-  const activeEntry = db.getFirstSync(
-    "SELECT * FROM time_entries WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1",
-  );
-
-  if (!activeEntry) {
-    return null;
-  }
-
-  const endTime = new Date().toISOString();
-  db.runSync(
-    "UPDATE time_entries SET end_time = ?, duration_minutes = CAST((julianday(?) - julianday(start_time)) * 24 * 60 AS INTEGER) WHERE id = ?",
-    [endTime, endTime, activeEntry.id],
-  );
-
-  return db.getFirstSync("SELECT * FROM time_entries WHERE id = ?", [activeEntry.id]);
-};
-
-export const getActiveTimer = () =>
-  db.getFirstSync(
-    `
-      SELECT time_entries.*, tasks.title AS task_title
-      FROM time_entries
-      JOIN tasks ON tasks.id = time_entries.task_id
-      WHERE time_entries.end_time IS NULL
-      ORDER BY time_entries.start_time DESC
-      LIMIT 1
-    `,
-  );

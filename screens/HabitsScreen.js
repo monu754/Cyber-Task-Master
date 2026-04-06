@@ -16,11 +16,59 @@ import {
   completeTaskAndGenerateNext,
   getHabitInsights,
   getHabitsWithDetails,
-  removeTask,
+  removeHabit,
   setTaskStatus,
 } from "../database";
 import { buildHabitConsistencySeries } from "../utils/analytics";
 import { cancelTaskNotifications, scheduleSingleNotification } from "../utils/taskNotifications";
+
+const getLocalDayKey = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}-${`${date.getDate()}`.padStart(2, "0")}`;
+};
+
+const getHabitAvailability = (habit) => {
+  const dueDayKey = getLocalDayKey(habit?.due_date);
+  const todayKey = getLocalDayKey(new Date());
+
+  if (!dueDayKey || !todayKey) {
+    return {
+      canCompleteToday: false,
+      tone: "neutral",
+      message: "Set a valid schedule before this habit can be completed.",
+    };
+  }
+
+  if (dueDayKey < todayKey) {
+    return {
+      canCompleteToday: false,
+      tone: "missed",
+      message: "Missed earlier. Wait for the next scheduled check-in.",
+    };
+  }
+
+  if (dueDayKey > todayKey) {
+    return {
+      canCompleteToday: false,
+      tone: "upcoming",
+      message: "Upcoming habit. You can complete it on its scheduled day.",
+    };
+  }
+
+  return {
+    canCompleteToday: true,
+    tone: "today",
+    message: "Ready for today.",
+  };
+};
 
 function HabitBars({ color, data }) {
   const maxValue = Math.max(...data.map((item) => item.value), 1);
@@ -42,6 +90,7 @@ function HabitBars({ color, data }) {
 }
 
 function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
+  const availability = getHabitAvailability(habit);
   const dueLabel = habit.due_date
     ? new Date(habit.due_date).toLocaleString(undefined, {
         month: "short",
@@ -52,7 +101,7 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
     : "No next reminder";
 
   return (
-    <View style={[styles.habitCard, { borderColor: `${habit.project_color || theme.accent}55` }]}>
+    <View style={[styles.habitCard, { borderColor: `${habit.category_color || theme.accent}55` }]}>
       <View style={styles.cardTop}>
         <View style={styles.badgeRow}>
           <View style={styles.badge}>
@@ -66,11 +115,21 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
             </View>
           ) : null}
         </View>
-        <TouchableOpacity onPress={() => onToggleDone(habit)} activeOpacity={0.85}>
+        <TouchableOpacity
+          onPress={() => onToggleDone(habit)}
+          activeOpacity={availability.canCompleteToday ? 0.85 : 1}
+          disabled={!availability.canCompleteToday}
+        >
           <Ionicons
             name={habit.status === "Done" ? "checkmark-circle" : "ellipse-outline"}
             size={24}
-            color={habit.status === "Done" ? "#34D399" : "#94A3B8"}
+            color={
+              habit.status === "Done"
+                ? "#34D399"
+                : availability.canCompleteToday
+                  ? "#94A3B8"
+                  : "#475569"
+            }
           />
         </TouchableOpacity>
       </View>
@@ -78,13 +137,54 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
       <Text style={styles.habitTitle}>{habit.title}</Text>
       {habit.description ? <Text style={styles.metaText}>{habit.description}</Text> : null}
       <Text style={styles.metaText}>Next check-in: {dueLabel}</Text>
-      {habit.workspace_name ? <Text style={styles.metaText}>Workspace: {habit.workspace_name}</Text> : null}
+      <Text
+        style={[
+          styles.availabilityText,
+          availability.tone === "today"
+            ? styles.availabilityToday
+            : availability.tone === "missed"
+              ? styles.availabilityMissed
+              : styles.availabilityUpcoming,
+        ]}
+      >
+        {availability.message}
+      </Text>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statPill}>
+          <Text style={styles.statValue}>{habit.total_completions || 0}</Text>
+          <Text style={styles.statLabel}>total</Text>
+        </View>
+        <View style={styles.statPill}>
+          <Text style={styles.statValue}>{habit.current_streak || 0}</Text>
+          <Text style={styles.statLabel}>current streak</Text>
+        </View>
+        <View style={styles.statPill}>
+          <Text style={styles.statValue}>{habit.longest_streak || 0}</Text>
+          <Text style={styles.statLabel}>best streak</Text>
+        </View>
+      </View>
+
+      {habit.last_completed_at ? (
+        <Text style={styles.metaText}>
+          Last completed: {new Date(habit.last_completed_at).toLocaleString()}
+        </Text>
+      ) : (
+        <Text style={styles.metaText}>No completions yet.</Text>
+      )}
 
       <View style={styles.cardButtons}>
         <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(habit)}>
           <Ionicons name="create-outline" size={18} color="#7DD3FC" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onToggleDone(habit)}>
+        <TouchableOpacity
+          style={[
+            styles.iconButton,
+            !availability.canCompleteToday && styles.iconButtonDisabled,
+          ]}
+          onPress={() => onToggleDone(habit)}
+          disabled={!availability.canCompleteToday}
+        >
           <Ionicons name="checkmark-done-outline" size={18} color="#A7F3D0" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(habit.id)}>
@@ -120,7 +220,7 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
 
     const query = search.trim().toLowerCase();
     return habits.filter((habit) =>
-      [habit.title, habit.description, habit.category_name, habit.workspace_name, habit.project_name]
+      [habit.title, habit.description, habit.category_name]
         .join(" ")
         .toLowerCase()
         .includes(query),
@@ -139,6 +239,12 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
   };
 
   const onToggleDone = async (habit) => {
+    const availability = getHabitAvailability(habit);
+    if (!availability.canCompleteToday) {
+      Alert.alert("Not available", availability.message);
+      return;
+    }
+
     if (habit.status === "Done") {
       const updatedHabit = setTaskStatus(habit.id, "Todo");
       if (updatedHabit?.due_date) {
@@ -159,7 +265,7 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
         style: "destructive",
         onPress: async () => {
           await cancelTaskNotifications(habitId);
-          removeTask(habitId);
+          removeHabit(habitId);
           loadHabits();
         },
       },
@@ -189,12 +295,12 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
                 <Text style={styles.metricLabel}>habits</Text>
               </View>
               <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{insights?.completed_habits || 0}</Text>
-                <Text style={styles.metricLabel}>completed</Text>
+                <Text style={styles.metricValue}>{insights?.active_streak_habits || 0}</Text>
+                <Text style={styles.metricLabel}>on streak</Text>
               </View>
               <View style={styles.metricCard}>
-                <Text style={styles.metricValue}>{insights?.pending_habits || 0}</Text>
-                <Text style={styles.metricLabel}>pending</Text>
+                <Text style={styles.metricValue}>{insights?.total_completions || 0}</Text>
+                <Text style={styles.metricLabel}>completions</Text>
               </View>
             </View>
 
@@ -205,7 +311,7 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
 
             <TextInput
               style={styles.searchInput}
-              placeholder="Search habits, categories, workspaces"
+              placeholder="Search habits and categories"
               placeholderTextColor="#64748B"
               value={search}
               onChangeText={setSearch}
@@ -286,6 +392,22 @@ const styles = StyleSheet.create({
   badgeText: { color: "#C8D6E5", fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
   habitTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24 },
   metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18 },
+  availabilityText: { fontSize: 12, fontWeight: "700" },
+  availabilityToday: { color: "#A7F3D0" },
+  availabilityUpcoming: { color: "#7DD3FC" },
+  availabilityMissed: { color: "#FCA5A5" },
+  statsRow: { flexDirection: "row", gap: 8 },
+  statPill: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.12)",
+  },
+  statValue: { color: "#F8FAFC", fontSize: 18, fontWeight: "900" },
+  statLabel: { color: "#8FA5BF", fontSize: 11, fontWeight: "700", marginTop: 4 },
   cardButtons: { flexDirection: "row", gap: 10 },
   iconButton: {
     width: 38,
@@ -294,6 +416,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  iconButtonDisabled: {
+    opacity: 0.45,
   },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
   fab: {

@@ -67,6 +67,7 @@ export default function AddHabitScreen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
+  const keyboardVerticalOffset = Platform.OS === "ios" ? Math.max(insets.top, 12) : 28;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categories, setCategories] = useState([]);
@@ -151,6 +152,7 @@ export default function AddHabitScreen({
         recurrence,
         tags: [],
         status: habitToEdit?.status || "Todo",
+        habitGroupId: habitToEdit?.habit_group_id || habitToEdit?.id || null,
       };
 
       const savedHabit = habitToEdit
@@ -176,11 +178,17 @@ export default function AddHabitScreen({
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme?.gradient?.[0] || "#07111F" }]}>
       <StatusBar barStyle="light-content" backgroundColor={theme?.gradient?.[0] || "#07111F"} />
       <LinearGradient colors={theme?.gradient || ["#07111F", "#0B172A", "#122033"]} style={styles.safeArea}>
-        <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView
+          style={styles.safeArea}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={keyboardVerticalOffset}
+        >
           <ScrollView
             style={styles.container}
             contentContainerStyle={[styles.content, { paddingBottom: Math.max(bottomInset, insets.bottom + 28) }]}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            keyboardShouldPersistTaps="handled"
           >
             <View style={styles.headerText}>
               <Text style={[styles.eyebrow, { color: themeAccent }]}>Habit tracker</Text>
