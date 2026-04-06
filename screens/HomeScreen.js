@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppIcon, SectionBadge } from "../components/AppIcon";
 import { getHabitInsights, getHabitsWithDetails, getTaskInsights, getTasksWithDetails } from "../database";
 import {
   buildHabitConsistencySeries,
@@ -194,6 +195,7 @@ export default function HomeScreen({
 
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
+            <SectionBadge iconName="sparkles-outline" label="Daily rhythm" theme={theme} />
             <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>
               Task flow
             </Text>
@@ -240,6 +242,8 @@ export default function HomeScreen({
         <View style={styles.card}>
           <SectionHeader
             title="Habit tracker"
+            iconName="infinite-outline"
+            theme={theme}
             action={<TouchableOpacity onPress={onOpenHabits}><Text style={styles.linkText}>Open</Text></TouchableOpacity>}
           />
           <Text style={styles.cardText}>
@@ -257,7 +261,12 @@ export default function HomeScreen({
         </View>
 
         <View style={styles.card}>
-          <SectionHeader title="Next due task" action={<TouchableOpacity onPress={onOpenTasks}><Text style={styles.linkText}>See all</Text></TouchableOpacity>} />
+          <SectionHeader
+            title="Next due task"
+            iconName="grid-outline"
+            theme={theme}
+            action={<TouchableOpacity onPress={onOpenTasks}><Text style={styles.linkText}>See all</Text></TouchableOpacity>}
+          />
           {nextDueTask ? (
             <TouchableOpacity
               style={[styles.taskCard, { borderColor: `${nextDueTask.project_color || theme?.accent}55` }]}
@@ -280,18 +289,18 @@ export default function HomeScreen({
         </View>
 
         <View style={styles.card}>
-          <SectionHeader title="Theme" />
+          <SectionHeader title="Theme" iconName="diamond-outline" theme={theme} />
           <Text style={styles.cardText}>
             Browse all themes on a separate page with full previews before you apply one.
           </Text>
           <TouchableOpacity style={styles.themePageButton} onPress={onOpenThemes}>
-            <View style={[styles.themePreviewSwatch, { backgroundColor: theme?.accent || "#2563EB" }]} />
+            <AppIcon name="color-palette-outline" size={16} theme={theme} tone="accent" style={styles.themeButtonIcon} />
             <Text style={styles.themePageButtonText}>Open theme gallery</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
-          <SectionHeader title="Dashboard customization" />
+          <SectionHeader title="Dashboard customization" iconName="options-outline" theme={theme} />
           <ToggleRow
             label="Completion stats"
             value={dashboardConfig.showCompletionStats}
@@ -316,14 +325,14 @@ export default function HomeScreen({
 
         {dashboardConfig.showCompletionStats ? (
           <View style={styles.card}>
-            <SectionHeader title="Task completion stats" />
+            <SectionHeader title="Task completion stats" iconName="bar-chart-outline" theme={theme} />
             <MiniBars color={theme?.accent || "#2563EB"} data={completionSeries} />
           </View>
         ) : null}
 
         {dashboardConfig.showWeeklyReport ? (
           <View style={styles.card}>
-            <SectionHeader title="Weekly performance report" />
+            <SectionHeader title="Weekly performance report" iconName="pulse-outline" theme={theme} />
             <Text style={styles.cardText}>Completion rate: {weeklyReport.completionRate}%</Text>
             <Text style={styles.cardText}>Overdue share: {weeklyReport.overdueRate}%</Text>
             {weeklyReport.focusTasks.length ? (
@@ -340,14 +349,14 @@ export default function HomeScreen({
 
         {dashboardConfig.showHabitConsistency ? (
           <View style={styles.card}>
-            <SectionHeader title="Habit consistency" />
+            <SectionHeader title="Habit consistency" iconName="analytics-outline" theme={theme} />
             <MiniBars color="#34D399" data={habitSeries} />
           </View>
         ) : null}
 
         {dashboardConfig.showHabitSummary ? (
           <View style={styles.card}>
-            <SectionHeader title="Habit tracker summary" />
+            <SectionHeader title="Habit tracker summary" iconName="leaf-outline" theme={theme} />
             <Text style={styles.cardText}>Streak health: {habitSummary.completionRate}%</Text>
             <Text style={styles.cardText}>Pending habits: {habitSummary.pendingHabits}</Text>
             <Text style={styles.cardText}>Best streak: {habitInsights?.longest_streak || 0}</Text>
@@ -364,7 +373,7 @@ export default function HomeScreen({
         ) : null}
 
         <View style={styles.card}>
-          <SectionHeader title="App updates" />
+          <SectionHeader title="App updates" iconName="cloud-download-outline" theme={theme} />
           <Text style={styles.cardText}>
             {updateState?.unsupportedReason ||
               updateState?.error ||
@@ -419,10 +428,13 @@ function MetricCard({ label, value }) {
   );
 }
 
-function SectionHeader({ action, title }) {
+function SectionHeader({ action, iconName, theme, title }) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionTitleWrap}>
+        {iconName ? <AppIcon name={iconName} size={14} theme={theme} tone="accent" style={styles.sectionIcon} /> : null}
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
       {action}
     </View>
   );
@@ -560,6 +572,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  sectionTitleWrap: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionIcon: { transform: [{ scale: 0.82 }] },
   sectionTitle: { color: "#F8FAFC", fontSize: 20, fontWeight: "800" },
   cardText: { color: "#CBD5E1", fontSize: 14, lineHeight: 21 },
   themePageButton: {
@@ -573,11 +587,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  themePreviewSwatch: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
+  themeButtonIcon: { transform: [{ scale: 0.85 }] },
   themePageButtonText: {
     color: "#F8FAFC",
     fontSize: 15,

@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppIcon, SectionBadge } from "../components/AppIcon";
 import { THEME_OPTIONS } from "../utils/preferences";
 
 function ThemePreviewCard({ isSelected, item, onPress }) {
@@ -46,6 +47,13 @@ function ThemePreviewCard({ isSelected, item, onPress }) {
 
         <View style={styles.previewActionRow}>
           <View style={[styles.previewPrimaryAction, { backgroundColor: item.accent }]}>
+            <AppIcon
+              name={isSelected ? "sparkles" : "color-palette-outline"}
+              size={14}
+              theme={item}
+              tone="neutral"
+              style={styles.previewActionIcon}
+            />
             <Text style={styles.previewPrimaryActionText}>
               {isSelected ? "Selected" : "Apply theme"}
             </Text>
@@ -67,6 +75,7 @@ export default function ThemeScreen({ bottomInset, onChangeTheme, theme, themeKe
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
+            <SectionBadge iconName="diamond-outline" label="Visual polish" theme={theme} />
             <Text style={styles.eyebrow}>Personalize</Text>
             <Text style={styles.title}>Theme Gallery</Text>
             <Text style={styles.subtitle}>
@@ -213,9 +222,12 @@ const styles = StyleSheet.create({
   previewPrimaryAction: {
     minHeight: 50,
     borderRadius: 16,
+    flexDirection: "row",
+    gap: 10,
     alignItems: "center",
     justifyContent: "center",
   },
+  previewActionIcon: { transform: [{ scale: 0.78 }] },
   previewPrimaryActionText: {
     color: "#FFFFFF",
     fontSize: 15,

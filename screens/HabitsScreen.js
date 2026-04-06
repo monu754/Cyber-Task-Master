@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -12,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppIcon, AppIconButton, SectionBadge } from "../components/AppIcon";
 import {
   completeTaskAndGenerateNext,
   getHabitInsights,
@@ -120,15 +120,16 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
           activeOpacity={availability.canCompleteToday ? 0.85 : 1}
           disabled={!availability.canCompleteToday}
         >
-          <Ionicons
-            name={habit.status === "Done" ? "checkmark-circle" : "ellipse-outline"}
-            size={24}
-            color={
+          <AppIcon
+            name={habit.status === "Done" ? "checkmark-done" : "radio-button-off"}
+            size={16}
+            theme={theme}
+            tone={
               habit.status === "Done"
-                ? "#34D399"
+                ? "success"
                 : availability.canCompleteToday
-                  ? "#94A3B8"
-                  : "#475569"
+                  ? "neutral"
+                  : "muted"
             }
           />
         </TouchableOpacity>
@@ -174,22 +175,28 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
       )}
 
       <View style={styles.cardButtons}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(habit)}>
-          <Ionicons name="create-outline" size={18} color="#7DD3FC" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.iconButton,
-            !availability.canCompleteToday && styles.iconButtonDisabled,
-          ]}
-          onPress={() => onToggleDone(habit)}
+        <AppIconButton
+          accessibilityLabel="Edit habit"
+          iconName="pencil"
+          onPress={() => onEdit(habit)}
+          theme={theme}
+          tone="accent"
+        />
+        <AppIconButton
+          accessibilityLabel="Complete habit"
           disabled={!availability.canCompleteToday}
-        >
-          <Ionicons name="checkmark-done-outline" size={18} color="#A7F3D0" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(habit.id)}>
-          <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
-        </TouchableOpacity>
+          iconName="checkmark-done"
+          onPress={() => onToggleDone(habit)}
+          theme={theme}
+          tone="success"
+        />
+        <AppIconButton
+          accessibilityLabel="Delete habit"
+          iconName="trash-outline"
+          onPress={() => onDelete(habit.id)}
+          theme={theme}
+          tone="danger"
+        />
       </View>
     </View>
   );
@@ -283,6 +290,7 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
         )}
         ListHeaderComponent={
           <View style={styles.header}>
+            <SectionBadge iconName="infinite-outline" label="Routine loop" theme={theme} />
             <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>Routine focus</Text>
             <Text style={[styles.title, { color: theme?.text || "#F8FAFC" }]}>Habit Tracker</Text>
             <Text style={[styles.subtitle, { color: theme?.muted || "#94A3B8" }]}>
@@ -326,10 +334,10 @@ export default function HabitsScreen({ bottomInset, isActive, onOpenPlanner, the
       />
 
       <TouchableOpacity
-        style={[styles.fab, { bottom: insets.bottom + 84, backgroundColor: theme?.accent || "#2563EB" }]}
+        style={[styles.fab, { bottom: insets.bottom + 84 }]}
         onPress={() => onOpenPlanner(null)}
       >
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        <AppIcon name="add" size={22} theme={theme} tone="accent" active style={styles.fabIcon} />
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -409,32 +417,25 @@ const styles = StyleSheet.create({
   statValue: { color: "#F8FAFC", fontSize: 18, fontWeight: "900" },
   statLabel: { color: "#8FA5BF", fontSize: 11, fontWeight: "700", marginTop: 4 },
   cardButtons: { flexDirection: "row", gap: 10 },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  iconButtonDisabled: {
-    opacity: 0.45,
-  },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
   fab: {
     position: "absolute",
     right: 24,
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 68,
+    height: 68,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
+    backgroundColor: "rgba(7, 17, 31, 0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(125, 211, 252, 0.18)",
+    shadowColor: "#020617",
+    shadowOpacity: 0.42,
+    shadowRadius: 22,
     shadowOffset: { width: 0, height: 8 },
     elevation: 16,
   },
+  fabIcon: { transform: [{ scale: 1.08 }] },
   chartRow: {
     flexDirection: "row",
     alignItems: "flex-end",

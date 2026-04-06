@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppIcon, SectionBadge } from "../components/AppIcon";
 import {
   createHabit,
   ensureCategory,
@@ -46,10 +47,13 @@ function ChipRow({ children }) {
   );
 }
 
-function Section({ children, help, title }) {
+function Section({ children, help, iconName, theme, title }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionTitleRow}>
+        {iconName ? <AppIcon name={iconName} size={13} theme={theme} tone="accent" style={styles.sectionIcon} /> : null}
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
       {help ? <Text style={styles.helper}>{help}</Text> : null}
       {children}
     </View>
@@ -191,6 +195,7 @@ export default function AddHabitScreen({
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.headerText}>
+              <SectionBadge iconName="infinite-outline" label="Habit editor" theme={theme} />
               <Text style={[styles.eyebrow, { color: themeAccent }]}>Habit tracker</Text>
               <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
                 {habitToEdit ? "Edit habit" : "New habit"}
@@ -201,7 +206,7 @@ export default function AddHabitScreen({
             </View>
 
             <View style={[styles.card, { backgroundColor: themePanel }]}>
-            <Section title="Habit name *" help="Use a repeatable action like 'Read 20 minutes' or 'Morning walk'.">
+            <Section title="Habit name *" iconName="leaf-outline" theme={theme} help="Use a repeatable action like 'Read 20 minutes' or 'Morning walk'.">
               <TextInput
                 style={[styles.input, { backgroundColor: inputBackground, borderColor: inputBorder, color: themeText }]}
                 placeholder="What habit do you want to repeat?"
@@ -211,7 +216,7 @@ export default function AddHabitScreen({
               />
             </Section>
 
-            <Section title="Frequency" help="Choose how often the routine should come back.">
+            <Section title="Frequency" iconName="refresh-outline" theme={theme} help="Choose how often the routine should come back.">
               <ChipRow>
                 {RECURRENCE_OPTIONS.map((item) => (
                   <Chip key={item} label={item} selected={recurrence === item} onPress={() => setRecurrence(item)} />
@@ -219,7 +224,7 @@ export default function AddHabitScreen({
               </ChipRow>
             </Section>
 
-            <Section title="Preferred time" help="Set the time you usually want to do this habit.">
+            <Section title="Preferred time" iconName="time-outline" theme={theme} help="Set the time you usually want to do this habit.">
               <TouchableOpacity
                 style={[styles.dateButton, { backgroundColor: inputBackground, borderColor: inputBorder }]}
                 onPress={() => setShowTimePicker(true)}
@@ -243,7 +248,7 @@ export default function AddHabitScreen({
               ) : null}
             </Section>
 
-            <Section title="Reminder" help="Pick when the habit should nudge you.">
+            <Section title="Reminder" iconName="notifications-outline" theme={theme} help="Pick when the habit should nudge you.">
               <ChipRow>
                 {REMINDER_OPTIONS.slice(0, 6).map((item) => (
                   <Chip
@@ -256,7 +261,7 @@ export default function AddHabitScreen({
               </ChipRow>
             </Section>
 
-            <Section title="Category" help="Group routines like Health, Learning, or Home.">
+            <Section title="Category" iconName="pricetag-outline" theme={theme} help="Group routines like Health, Learning, or Home.">
               <ChipRow>
                 {categories.map((item) => (
                   <Chip
@@ -279,7 +284,7 @@ export default function AddHabitScreen({
               />
             </Section>
 
-            <Section title="Notes" help="Describe why this matters or what counts as done.">
+            <Section title="Notes" iconName="reader-outline" theme={theme} help="Describe why this matters or what counts as done.">
               <TextInput
                 style={[styles.input, styles.multiInput, { backgroundColor: inputBackground, borderColor: inputBorder, color: themeText }]}
                 multiline
@@ -294,6 +299,7 @@ export default function AddHabitScreen({
 
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
+              <AppIcon name="arrow-back" size={14} theme={theme} tone="neutral" style={styles.actionIcon} />
               <Text style={styles.secondaryText}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -301,6 +307,14 @@ export default function AddHabitScreen({
               onPress={handleSave}
               disabled={isSaving}
             >
+              <AppIcon
+                active
+                name={habitToEdit ? "sparkles" : "add"}
+                size={14}
+                theme={theme}
+                tone="neutral"
+                style={styles.actionIcon}
+              />
               <Text style={styles.primaryText}>
                 {isSaving ? "Saving..." : habitToEdit ? "Update habit" : "Save habit"}
               </Text>
@@ -325,6 +339,8 @@ const styles = StyleSheet.create({
   subtitleCompact: { fontSize: 14, lineHeight: 20 },
   card: { borderRadius: 24, padding: 18, borderWidth: 1, borderColor: "rgba(148,163,184,0.14)", gap: 18 },
   section: { gap: 8 },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionIcon: { transform: [{ scale: 0.78 }] },
   sectionTitle: { color: "#7DD3FC", fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
   helper: { color: "#94A3B8", fontSize: 13, lineHeight: 19 },
   input: { minHeight: 54, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(148,163,184,0.16)", color: "#F8FAFC", paddingHorizontal: 16, fontSize: 15 },
@@ -338,8 +354,9 @@ const styles = StyleSheet.create({
   dateText: { color: "#F8FAFC", fontWeight: "700" },
   topGap: { marginTop: 4 },
   actionRow: { flexDirection: "row", gap: 12 },
-  secondaryButton: { flex: 0.38, minHeight: 52, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(148,163,184,0.14)" },
-  primaryButton: { flex: 1, minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  actionIcon: { transform: [{ scale: 0.76 }] },
+  secondaryButton: { flex: 0.38, minHeight: 52, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(148,163,184,0.14)", flexDirection: "row", gap: 8 },
+  primaryButton: { flex: 1, minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   secondaryText: { color: "#B8C6D5", fontSize: 15, fontWeight: "800" },
   primaryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
 });

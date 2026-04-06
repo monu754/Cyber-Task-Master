@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -15,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppIcon, AppIconButton, SectionBadge } from "../components/AppIcon";
 import {
   completeTaskAndGenerateNext,
   getTasksWithDetails,
@@ -151,10 +151,11 @@ function TaskCard({
           </View>
         </View>
         <TouchableOpacity onPress={() => onToggleDone(item)} activeOpacity={0.85}>
-          <Ionicons
-            name={item.status === "Done" ? "checkmark-circle" : "ellipse-outline"}
-            size={24}
-            color={item.status === "Done" ? "#34D399" : "#94A3B8"}
+          <AppIcon
+            name={item.status === "Done" ? "checkmark-done" : "radio-button-off"}
+            size={16}
+            theme={theme}
+            tone={item.status === "Done" ? "success" : "neutral"}
           />
         </TouchableOpacity>
       </View>
@@ -189,12 +190,20 @@ function TaskCard({
       </HorizontalChips>
 
       <View style={styles.cardButtons}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(item)}>
-          <Ionicons name="create-outline" size={18} color="#7DD3FC" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(item.id)}>
-          <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
-        </TouchableOpacity>
+        <AppIconButton
+          accessibilityLabel="Edit task"
+          iconName="pencil"
+          onPress={() => onEdit(item)}
+          theme={theme}
+          tone="accent"
+        />
+        <AppIconButton
+          accessibilityLabel="Delete task"
+          iconName="trash-outline"
+          onPress={() => onDelete(item.id)}
+          theme={theme}
+          tone="danger"
+        />
       </View>
     </View>
   );
@@ -348,6 +357,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
 
   const listHeader = (
     <View style={styles.header}>
+      <SectionBadge iconName="grid-outline" label="Task system" theme={theme} />
       <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>Workspace</Text>
       <Text
         style={[
@@ -381,7 +391,13 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
           onPress={() => setIsFilterModalVisible(true)}
           activeOpacity={0.9}
         >
-          <Ionicons name="options-outline" size={18} color="#F8FAFC" />
+          <AppIcon
+            name="options-outline"
+            size={15}
+            theme={theme}
+            tone="accent"
+            style={styles.filterIcon}
+          />
           {!isVeryCompact ? <Text style={styles.filtersButtonText}>Filters</Text> : null}
         </TouchableOpacity>
       </View>
@@ -595,13 +611,10 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
       )}
 
       <TouchableOpacity
-        style={[
-          styles.fab,
-          { bottom: insets.bottom + 84, backgroundColor: theme?.accent || "#2563EB" },
-        ]}
+        style={[styles.fab, { bottom: insets.bottom + 84 }]}
         onPress={() => onOpenPlanner(null)}
       >
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        <AppIcon name="add" size={22} theme={theme} tone="accent" active style={styles.fabIcon} />
       </TouchableOpacity>
 
       <Modal
@@ -699,10 +712,10 @@ const styles = StyleSheet.create({
   filtersButton: {
     minHeight: 54,
     borderRadius: 18,
-    paddingHorizontal: 14,
-    backgroundColor: "rgba(37,99,235,0.18)",
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(96,165,250,0.45)",
+    borderColor: "rgba(148,163,184,0.16)",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -717,6 +730,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
+  filterIcon: { transform: [{ scale: 0.86 }] },
   segmentedWrap: {
     flexDirection: "row",
     backgroundColor: "rgba(15,23,42,0.64)",
@@ -807,14 +821,6 @@ const styles = StyleSheet.create({
   metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18 },
   alertText: { color: "#FCA5A5" },
   cardButtons: { flexDirection: "row", gap: 10 },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
   viewSection: { gap: 16 },
   boardIntro: { color: "#B5C6D6", fontSize: 14, lineHeight: 21 },
@@ -877,17 +883,21 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 24,
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 68,
+    height: 68,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
+    backgroundColor: "rgba(7, 17, 31, 0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(125, 211, 252, 0.18)",
+    shadowColor: "#020617",
+    shadowOpacity: 0.42,
+    shadowRadius: 22,
     shadowOffset: { width: 0, height: 8 },
     elevation: 16,
   },
+  fabIcon: { transform: [{ scale: 1.08 }] },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.72)",

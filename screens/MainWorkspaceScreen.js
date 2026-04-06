@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +25,7 @@ import ThemeScreen from "./ThemeScreen";
 
 const TABS = [
   { key: "home", label: "Dashboard", icon: "home-outline", activeIcon: "home" },
-  { key: "tasks", label: "Tasks", icon: "albums-outline", activeIcon: "albums" },
+  { key: "tasks", label: "Tasks", icon: "grid-outline", activeIcon: "grid" },
   { key: "habits", label: "Habits", icon: "repeat-outline", activeIcon: "repeat" },
   { key: "themes", label: "Themes", icon: "color-palette-outline", activeIcon: "color-palette" },
 ];
@@ -50,7 +50,7 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
     unsupportedReason: "",
   });
 
-  const bottomInset = Math.max(insets.bottom + 96, 118);
+  const bottomInset = Math.max(insets.bottom + 88, 110);
   const theme = THEME_OPTIONS[themeKey] || THEME_OPTIONS.midnight;
   const isCompact = width < 390;
 
@@ -282,9 +282,9 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
           </View>
         </Animated.ScrollView>
 
-        <View style={[styles.bottomWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={styles.bottomWrap}>
           <BlurView intensity={34} tint="dark" style={styles.bottomBarBlur}>
-            <View style={styles.bottomBar}>
+            <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             {navItems.map((item) => (
               <TouchableOpacity
                 key={item.key}
@@ -296,8 +296,12 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                   goToIndex(item.index);
                 }}
               >
-                <View style={[styles.iconWrap, item.isActive && styles.iconWrapActive]}>
-                  <Ionicons name={item.iconName} size={18} color="#F8FAFC" />
+                <View style={[styles.navIconWrap, item.isActive && styles.navIconWrapActive]}>
+                  <Ionicons
+                    name={item.iconName}
+                    size={18}
+                    color={item.isActive ? "#F8FAFC" : "rgba(148, 163, 184, 0.78)"}
+                  />
                 </View>
                 <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
                   {isCompact ? item.shortLabel : item.label}
@@ -388,8 +392,8 @@ const styles = StyleSheet.create({
   },
   bottomWrap: {
     position: "absolute",
-    left: 18,
-    right: 18,
+    left: 0,
+    right: 0,
     bottom: 0,
   },
   bottomBar: {
@@ -397,49 +401,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    borderRadius: 22,
-    backgroundColor: "rgba(7, 17, 31, 0.74)",
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    backgroundColor: "rgba(7, 12, 21, 0.98)",
     borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.18)",
+    borderColor: "rgba(148, 163, 184, 0.08)",
+    borderBottomWidth: 0,
   },
   bottomBarBlur: {
-    borderRadius: 22,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     overflow: "hidden",
     shadowColor: "#020617",
-    shadowOpacity: 0.34,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 18,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
   },
   navButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 14,
   },
   navButtonActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
   },
-  iconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  navIconWrap: {
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(148, 163, 184, 0.12)",
+    borderRadius: 10,
   },
-  iconWrapActive: {
-    backgroundColor: "#2563EB",
+  navIconWrapActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   navLabel: {
-    color: "#8FA5BF",
+    color: "rgba(143, 165, 191, 0.8)",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0,
   },
   navLabelActive: {
     color: "#F8FAFC",
