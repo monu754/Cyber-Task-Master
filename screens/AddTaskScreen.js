@@ -1,4 +1,5 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -17,13 +18,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import {
   createTask,
   ensureCategory,
-  ensureProject,
-  ensureWorkspace,
   getCategories,
-  getProjects,
-  getTags,
   getTasksWithDetails,
-  getWorkspaces,
   updateTask,
 } from "../database";
 import {
@@ -35,14 +31,6 @@ import {
 
 const STATUS_OPTIONS = ["Todo", "In Progress", "Done"];
 const PRIORITY_OPTIONS = ["Low", "Medium", "High"];
-const RECURRENCE_OPTIONS = ["none", "daily", "weekly"];
-
-const parseList = (value, separator = ",") =>
-  value
-    .split(separator)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
 function Chip({ label, onPress, selected }) {
   return (
     <TouchableOpacity style={[styles.chip, selected && styles.chipActive]} onPress={onPress}>
@@ -84,21 +72,10 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const [status, setStatus] = useState("Todo");
   const [priority, setPriority] = useState("Medium");
   const [categories, setCategories] = useState([]);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [tags, setTags] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [categoryId, setCategoryId] = useState(1);
-  const [workspaceId, setWorkspaceId] = useState(1);
-  const [projectId, setProjectId] = useState(1);
   const [newCategory, setNewCategory] = useState("");
-  const [newWorkspace, setNewWorkspace] = useState("");
-  const [newProject, setNewProject] = useState("");
-  const [tagText, setTagText] = useState("");
-  const [subtaskText, setSubtaskText] = useState("");
   const [dependencyIds, setDependencyIds] = useState([]);
-  const [estimatedMinutes, setEstimatedMinutes] = useState("30");
-  const [recurrence, setRecurrence] = useState("none");
   const [reminderMinutes, setReminderMinutes] = useState(1440);
   const [date, setDate] = useState(new Date());
   const [hasDeadline, setHasDeadline] = useState(false);
@@ -112,9 +89,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     }
 
     setCategories(getCategories());
-    setWorkspaces(getWorkspaces());
-    setProjects(getProjects());
-    setTags(getTags());
     setTasks(getTasksWithDetails());
   }, [isActive]);
 
@@ -129,17 +103,9 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
       setStatus(taskToEdit.status || "Todo");
       setPriority(taskToEdit.priority || "Medium");
       setCategoryId(taskToEdit.category_id || 1);
-      setWorkspaceId(taskToEdit.workspace_id || 1);
-      setProjectId(taskToEdit.project_id || 1);
-      setTagText((taskToEdit.tags || []).map((tag) => tag.name).join(", "));
-      setSubtaskText((taskToEdit.subtasks || []).map((subtask) => subtask.title).join("\n"));
       setDependencyIds((taskToEdit.dependencies || []).map((item) => item.depends_on_task_id));
-      setEstimatedMinutes(String(taskToEdit.estimated_minutes || 30));
-      setRecurrence(taskToEdit.recurrence || "none");
       setReminderMinutes(normalizeReminderMinutes(taskToEdit.reminder_minutes));
       setNewCategory("");
-      setNewWorkspace("");
-      setNewProject("");
       if (taskToEdit.due_date) {
         setDate(new Date(taskToEdit.due_date));
         setHasDeadline(true);
@@ -155,25 +121,13 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
     setStatus("Todo");
     setPriority("Medium");
     setCategoryId(1);
-    setWorkspaceId(1);
-    setProjectId(1);
     setNewCategory("");
-    setNewWorkspace("");
-    setNewProject("");
-    setTagText("");
-    setSubtaskText("");
     setDependencyIds([]);
-    setEstimatedMinutes("30");
-    setRecurrence("none");
     setReminderMinutes(1440);
     setDate(new Date());
     setHasDeadline(false);
   }, [isActive, taskToEdit]);
 
-  const availableProjects = useMemo(
-    () => projects.filter((project) => project.workspace_id === workspaceId),
-    [projects, workspaceId],
-  );
   const dependencyOptions = useMemo(
     () => tasks.filter((task) => task.id !== taskToEdit?.id).slice(0, 12),
     [taskToEdit?.id, tasks],
@@ -181,27 +135,14 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   const themeAccent = theme?.accent || "#2563EB";
   const themeText = theme?.text || "#F8FAFC";
   const themeMuted = theme?.muted || "#94A3B8";
+  const themePanel = theme?.panel || "rgba(15, 23, 42, 0.76)";
+  const inputBackground = "rgba(255,255,255,0.05)";
+  const inputBorder = "rgba(148,163,184,0.18)";
   const minimumDate = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
   }, []);
-
-  useEffect(() => {
-    if (!isActive || newProject.trim()) {
-      return;
-    }
-
-    if (availableProjects.length === 0) {
-      setProjectId(1);
-      return;
-    }
-
-    const hasSelectedProject = availableProjects.some((project) => project.id === projectId);
-    if (!hasSelectedProject) {
-      setProjectId(availableProjects[0].id);
-    }
-  }, [availableProjects, isActive, newProject, projectId]);
 
   const onChangeDateTime = (_, selectedDate) => {
     setShowPicker(false);
@@ -247,37 +188,23 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
       const category = newCategory.trim()
         ? ensureCategory({ name: newCategory.trim() })
         : categories.find((item) => item.id === categoryId);
-      const workspace = newWorkspace.trim()
-        ? ensureWorkspace({ name: newWorkspace.trim() })
-        : workspaces.find((item) => item.id === workspaceId);
-      const resolvedWorkspaceId = workspace?.id || 1;
-
-      let project = null;
-      if (newProject.trim()) {
-        project = ensureProject({ name: newProject.trim(), workspaceId: resolvedWorkspaceId });
-      } else {
-        project = availableProjects.find((item) => item.id === projectId) || null;
-      }
-
-      if (!project) {
-        project = ensureProject({ name: "General", workspaceId: resolvedWorkspaceId });
-      }
 
       const payload = {
         title: title.trim(),
         description: description.trim(),
+        itemType: "task",
         status,
         priority,
         categoryId: category?.id || 1,
-        workspaceId: resolvedWorkspaceId,
-        projectId: project.id,
+        workspaceId: 1,
+        projectId: 1,
         dueDate: hasDeadline ? date.toISOString() : null,
         reminderMinutes,
-        recurrence,
-        estimatedMinutes: Number(estimatedMinutes) || 0,
-        tags: parseList(tagText).map((name) => ({ name })),
+        recurrence: "none",
+        estimatedMinutes: 0,
+        tags: [],
         dependencyIds,
-        subtasks: parseList(subtaskText, "\n").map((name) => ({ name })),
+        subtasks: [],
       };
 
       const savedTask = taskToEdit
@@ -300,30 +227,31 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme?.gradient?.[0] || "#07111F" }]}>
       <StatusBar barStyle="light-content" backgroundColor={theme?.gradient?.[0] || "#07111F"} />
-      <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={[styles.content, { paddingBottom: Math.max(bottomInset, insets.bottom + 28) }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.headerText}>
-            <Text style={[styles.eyebrow, { color: themeAccent }]}>Create task</Text>
-            <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
-              {taskToEdit ? "Edit task" : "New task"}
-            </Text>
-            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: themeMuted }]}>
-              Start with the basics. The sections below explain what each option does.
-            </Text>
-          </View>
+      <LinearGradient colors={theme?.gradient || ["#07111F", "#0B172A", "#122033"]} style={styles.safeArea}>
+        <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView
+            style={styles.container}
+            contentContainerStyle={[styles.content, { paddingBottom: Math.max(bottomInset, insets.bottom + 28) }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.headerText}>
+              <Text style={[styles.eyebrow, { color: themeAccent }]}>Create task</Text>
+              <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
+                {taskToEdit ? "Edit task" : "New task"}
+              </Text>
+              <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: themeMuted }]}>
+                Capture one-time work here. Recurring routines now belong in the habit tracker.
+              </Text>
+            </View>
 
-          <View style={[styles.card, { backgroundColor: theme?.panel || "rgba(15, 23, 42, 0.76)" }]}>
+            <View style={[styles.card, { backgroundColor: themePanel }]}>
             <Section title="Task name *" help="Use a short action like 'Submit report' or 'Call Rahul'.">
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: inputBackground, borderColor: inputBorder, color: themeText }]}
                 placeholder="What needs to get done?"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={themeMuted}
                 value={title}
                 onChangeText={setTitle}
               />
@@ -344,9 +272,9 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                 ))}
               </ChipRow>
               <TextInput
-                style={[styles.input, styles.topGap]}
+                style={[styles.input, styles.topGap, { backgroundColor: inputBackground, borderColor: inputBorder, color: themeText }]}
                 placeholder="Add a new category"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={themeMuted}
                 value={newCategory}
                 onChangeText={setNewCategory}
               />
@@ -368,71 +296,25 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
               </ChipRow>
             </Section>
 
-            <Section title="Workspace" help="A big area of work like Office, Home, or Freelance.">
-              <ChipRow>
-                {workspaces.map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.name}
-                    selected={workspaceId === item.id && !newWorkspace.trim()}
-                    onPress={() => {
-                      setWorkspaceId(item.id);
-                      setNewWorkspace("");
-                    }}
-                  />
-                ))}
-              </ChipRow>
-              <TextInput
-                style={[styles.input, styles.topGap]}
-                placeholder="Add a new workspace"
-                placeholderTextColor="#64748B"
-                value={newWorkspace}
-                onChangeText={setNewWorkspace}
-              />
-            </Section>
-
-            <Section title="Project" help="A smaller group inside a workspace, such as Website Redesign.">
-              <ChipRow>
-                {availableProjects.map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.name}
-                    selected={projectId === item.id && !newProject.trim()}
-                    onPress={() => {
-                      setProjectId(item.id);
-                      setNewProject("");
-                    }}
-                  />
-                ))}
-              </ChipRow>
-              <TextInput
-                style={[styles.input, styles.topGap]}
-                placeholder="Add a new project"
-                placeholderTextColor="#64748B"
-                value={newProject}
-                onChangeText={setNewProject}
-              />
-            </Section>
-
             <Section title="Deadline" help="Set the date and time when this task should be finished.">
               <View style={styles.row}>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: inputBackground, borderColor: inputBorder }]}
                   onPress={() => {
                     setPickerMode("date");
                     setShowPicker(true);
                   }}
                 >
-                  <Text style={styles.dateText}>{hasDeadline ? date.toLocaleDateString() : "Set date"}</Text>
+                  <Text style={[styles.dateText, { color: themeText }]}>{hasDeadline ? date.toLocaleDateString() : "Set date"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: inputBackground, borderColor: inputBorder }]}
                   onPress={() => {
                     setPickerMode("time");
                     setShowPicker(true);
                   }}
                 >
-                  <Text style={styles.dateText}>
+                  <Text style={[styles.dateText, { color: themeText }]}>
                     {hasDeadline
                       ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                       : "Set time"}
@@ -463,57 +345,6 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
               </ChipRow>
             </Section>
 
-            <Section title="Repeat" help="Use this only for tasks that come back regularly.">
-              <ChipRow>
-                {RECURRENCE_OPTIONS.map((item) => (
-                  <Chip key={item} label={item} selected={recurrence === item} onPress={() => setRecurrence(item)} />
-                ))}
-              </ChipRow>
-            </Section>
-
-            <Section title="Estimated time" help="Roughly how many minutes the task will take.">
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                placeholder="30"
-                placeholderTextColor="#64748B"
-                value={estimatedMinutes}
-                onChangeText={setEstimatedMinutes}
-              />
-            </Section>
-
-            <Section title="Tags" help="Optional keywords that make searching easier later.">
-              <TextInput
-                style={styles.input}
-                placeholder="urgent, design, review"
-                placeholderTextColor="#64748B"
-                value={tagText}
-                onChangeText={setTagText}
-              />
-              <ChipRow>
-                {tags.slice(0, 10).map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.name}
-                    selected={parseList(tagText).includes(item.name)}
-                    onPress={() => setTagText([...new Set([...parseList(tagText), item.name])].join(", "))}
-                  />
-                ))}
-              </ChipRow>
-            </Section>
-
-            <Section title="Subtasks" help="Break a big task into smaller steps, one per line.">
-              <TextInput
-                style={[styles.input, styles.multiInput]}
-                multiline
-                textAlignVertical="top"
-                placeholder={"Draft outline\nReview notes\nSubmit final version"}
-                placeholderTextColor="#64748B"
-                value={subtaskText}
-                onChangeText={setSubtaskText}
-              />
-            </Section>
-
             <Section title="Dependencies" help="Choose tasks that must finish before this one starts.">
               <ChipRow>
                 {dependencyOptions.map((item) => (
@@ -535,11 +366,11 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
 
             <Section title="Notes" help="Anything helpful you want to remember later.">
               <TextInput
-                style={[styles.input, styles.multiInput]}
+                style={[styles.input, styles.multiInput, { backgroundColor: inputBackground, borderColor: inputBorder, color: themeText }]}
                 multiline
                 textAlignVertical="top"
                 placeholder="Add context, definition of done, or extra details."
-                placeholderTextColor="#64748B"
+                placeholderTextColor={themeMuted}
                 value={description}
                 onChangeText={setDescription}
               />
@@ -560,8 +391,9 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
               </Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
     </SafeAreaView>
   );
 }

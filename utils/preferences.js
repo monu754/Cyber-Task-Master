@@ -77,8 +77,8 @@ export const THEME_OPTIONS = {
 export const DEFAULT_DASHBOARD_CONFIG = {
   showCompletionStats: true,
   showWeeklyReport: true,
-  showBurndown: true,
-  showTimeTracking: true,
+  showHabitConsistency: true,
+  showHabitSummary: true,
 };
 
 export const loadDashboardConfig = async () => {

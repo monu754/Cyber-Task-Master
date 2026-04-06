@@ -72,6 +72,33 @@ export const buildBurndownSeries = (tasks) => {
   return result;
 };
 
+export const buildHabitConsistencySeries = (rows) => buildSevenDaySeries(rows, "completed");
+
+export const buildHabitSummary = ({ habits, insights }) => {
+  const completionRate =
+    insights.total_habits > 0
+      ? Math.round((insights.completed_habits / insights.total_habits) * 100)
+      : 0;
+  const nextHabits = habits
+    .filter((habit) => habit.status !== "Done")
+    .sort((leftHabit, rightHabit) => {
+      if (!leftHabit.due_date) {
+        return 1;
+      }
+      if (!rightHabit.due_date) {
+        return -1;
+      }
+      return new Date(leftHabit.due_date) - new Date(rightHabit.due_date);
+    })
+    .slice(0, 3);
+
+  return {
+    completionRate,
+    nextHabits,
+    pendingHabits: insights.pending_habits || 0,
+  };
+};
+
 export const buildWeeklyReport = ({ insights, tasks }) => {
   const completionRate =
     insights.total_tasks > 0 ? Math.round((insights.done_tasks / insights.total_tasks) * 100) : 0;

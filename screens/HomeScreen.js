@@ -12,8 +12,13 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getActiveTimer, getTaskInsights, getTasksWithDetails } from "../database";
-import { buildBurndownSeries, buildSevenDaySeries, buildWeeklyReport, minutesToLabel } from "../utils/analytics";
+import { getHabitInsights, getHabitsWithDetails, getTaskInsights, getTasksWithDetails } from "../database";
+import {
+  buildHabitConsistencySeries,
+  buildHabitSummary,
+  buildSevenDaySeries,
+  buildWeeklyReport,
+} from "../utils/analytics";
 import {
   DEFAULT_DASHBOARD_CONFIG,
   loadDashboardConfig,
@@ -45,6 +50,8 @@ export default function HomeScreen({
   bottomInset,
   onApplyUpdate,
   onCheckForUpdates,
+  onOpenHabitPlanner,
+  onOpenHabits,
   onOpenThemes,
   onOpenPlanner,
   onOpenTasks,
@@ -54,15 +61,18 @@ export default function HomeScreen({
   const { width } = useWindowDimensions();
   const isCompact = width < 390;
   const [tasks, setTasks] = useState([]);
+  const [habits, setHabits] = useState([]);
   const [insights, setInsights] = useState(null);
+  const [habitInsights, setHabitInsights] = useState(null);
   const [dashboardConfig, setDashboardConfig] = useState(DEFAULT_DASHBOARD_CONFIG);
-  const [activeTimer, setActiveTimer] = useState(null);
 
   const loadHomeData = useCallback(async () => {
     const allTasks = getTasksWithDetails();
+    const allHabits = getHabitsWithDetails();
     setTasks(allTasks);
+    setHabits(allHabits);
     setInsights(getTaskInsights());
-    setActiveTimer(getActiveTimer());
+    setHabitInsights(getHabitInsights());
     setDashboardConfig(await loadDashboardConfig());
   }, []);
 
@@ -89,13 +99,14 @@ export default function HomeScreen({
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (tasks.length > 0) {
-        syncTaskNotifications(tasks);
+      const schedulableItems = [...tasks, ...habits];
+      if (schedulableItems.length > 0) {
+        syncTaskNotifications(schedulableItems);
       }
     }, 400);
 
     return () => clearTimeout(timeoutId);
-  }, [tasks]);
+  }, [habits, tasks]);
 
   const pendingTasks = useMemo(() => tasks.filter((task) => task.status !== "Done"), [tasks]);
   const nextDueTask = useMemo(() => {
@@ -109,7 +120,10 @@ export default function HomeScreen({
     () => buildSevenDaySeries(insights?.weekly_completion || [], "completed"),
     [insights],
   );
-  const burndownSeries = useMemo(() => buildBurndownSeries(tasks), [tasks]);
+  const habitSeries = useMemo(
+    () => buildHabitConsistencySeries(habitInsights?.weekly_completion || []),
+    [habitInsights],
+  );
   const weeklyReport = useMemo(
     () =>
       buildWeeklyReport({
@@ -117,6 +131,14 @@ export default function HomeScreen({
         tasks,
       }),
     [insights, tasks],
+  );
+  const habitSummary = useMemo(
+    () =>
+      buildHabitSummary({
+        habits,
+        insights: habitInsights || { total_habits: 0, completed_habits: 0, pending_habits: 0 },
+      }),
+    [habitInsights, habits],
   );
 
   const updateDashboardConfig = async (key, value) => {
@@ -193,21 +215,18 @@ export default function HomeScreen({
           <Text style={styles.heroDate}>{todayLabel}</Text>
           <Text style={styles.heroHeadline}>
             {pendingTasks.length
-              ? `${pendingTasks.length} active tasks are in motion. Keep the next few clean and finishable.`
-              : "A fresh workspace is ready. Add one meaningful task and create momentum."}
+              ? `${pendingTasks.length} one-time tasks are in motion. Keep the next few clean and finishable.`
+              : "A fresh workspace is ready. Add one meaningful task or habit and create momentum."}
           </Text>
           <Text style={styles.heroMeta}>
-            {insights?.overdue_tasks || 0} overdue | {minutesToLabel(insights?.tracked_minutes || 0)} tracked this week
+            {insights?.overdue_tasks || 0} overdue tasks | {habitInsights?.pending_habits || 0} habits waiting
           </Text>
-          {activeTimer ? (
-            <Text style={styles.heroMeta}>Timer running: {activeTimer.task_title}</Text>
-          ) : null}
           <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.primaryAction} onPress={onOpenTasks}>
-              <Text style={styles.primaryActionText}>Open tasks</Text>
+            <TouchableOpacity style={styles.primaryAction} onPress={onOpenHabitPlanner}>
+              <Text style={styles.primaryActionText}>New habit</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryAction} onPress={onOpenPlanner}>
-              <Text style={styles.secondaryActionText}>Plan task</Text>
+              <Text style={styles.secondaryActionText}>New task</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -215,7 +234,26 @@ export default function HomeScreen({
         <View style={styles.metricRow}>
           <MetricCard label="All tasks" value={insights?.total_tasks || 0} />
           <MetricCard label="In progress" value={insights?.in_progress_tasks || 0} />
-          <MetricCard label="Scheduled" value={insights?.scheduled_tasks || 0} />
+          <MetricCard label="Habits" value={habitInsights?.total_habits || 0} />
+        </View>
+
+        <View style={styles.card}>
+          <SectionHeader
+            title="Habit tracker"
+            action={<TouchableOpacity onPress={onOpenHabits}><Text style={styles.linkText}>Open</Text></TouchableOpacity>}
+          />
+          <Text style={styles.cardText}>
+            {habitInsights?.pending_habits || 0} habits are waiting and {habitInsights?.completed_habits || 0} have been checked off.
+          </Text>
+          {habitSummary.nextHabits.length ? (
+            habitSummary.nextHabits.map((habit) => (
+              <Text key={habit.id} style={styles.cardText}>
+                Next habit: {habit.title}
+              </Text>
+            ))
+          ) : (
+            <Text style={styles.cardText}>No pending habits right now.</Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -265,14 +303,14 @@ export default function HomeScreen({
             onValueChange={(value) => updateDashboardConfig("showWeeklyReport", value)}
           />
           <ToggleRow
-            label="Burn-down chart"
-            value={dashboardConfig.showBurndown}
-            onValueChange={(value) => updateDashboardConfig("showBurndown", value)}
+            label="Habit consistency"
+            value={dashboardConfig.showHabitConsistency}
+            onValueChange={(value) => updateDashboardConfig("showHabitConsistency", value)}
           />
           <ToggleRow
-            label="Time tracking"
-            value={dashboardConfig.showTimeTracking}
-            onValueChange={(value) => updateDashboardConfig("showTimeTracking", value)}
+            label="Habit summary"
+            value={dashboardConfig.showHabitSummary}
+            onValueChange={(value) => updateDashboardConfig("showHabitSummary", value)}
           />
         </View>
 
@@ -300,22 +338,28 @@ export default function HomeScreen({
           </View>
         ) : null}
 
-        {dashboardConfig.showBurndown ? (
+        {dashboardConfig.showHabitConsistency ? (
           <View style={styles.card}>
-            <SectionHeader title="Burn-down trend" />
-            <MiniBars color="#F59E0B" data={burndownSeries} />
+            <SectionHeader title="Habit consistency" />
+            <MiniBars color="#34D399" data={habitSeries} />
           </View>
         ) : null}
 
-        {dashboardConfig.showTimeTracking ? (
+        {dashboardConfig.showHabitSummary ? (
           <View style={styles.card}>
-            <SectionHeader title="Time tracking" />
-            <Text style={styles.cardText}>
-              Tracked this week: {minutesToLabel(insights?.tracked_minutes || 0)}
-            </Text>
-            <Text style={styles.cardText}>
-              Estimated queued work: {minutesToLabel(insights?.estimated_minutes || 0)}
-            </Text>
+            <SectionHeader title="Habit tracker summary" />
+            <Text style={styles.cardText}>Completion rate: {habitSummary.completionRate}%</Text>
+            <Text style={styles.cardText}>Pending habits: {habitSummary.pendingHabits}</Text>
+            <Text style={styles.cardText}>Best current streak: {habitInsights?.longest_streak || 0}</Text>
+            {habitSummary.nextHabits.length ? (
+              habitSummary.nextHabits.map((habit) => (
+                <Text key={habit.id} style={styles.cardText}>
+                  Up next: {habit.title}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.cardText}>No pending habits right now.</Text>
+            )}
           </View>
         ) : null}
 

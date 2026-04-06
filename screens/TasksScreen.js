@@ -418,7 +418,7 @@ export default function TasksScreen({ bottomInset, isActive, onOpenPlanner, them
           { color: theme?.muted || "#94A3B8" },
         ]}
       >
-        Pick a view, then use the filter rows below to narrow tasks exactly the way you want.
+        One-time work lives here. Recurring routines now have their own habit tracker.
       </Text>
 
       {activeTimer ? (

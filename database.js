@@ -23,6 +23,7 @@ const ensureTaskColumns = () => {
   ensureColumn("tasks", "completed", "INTEGER DEFAULT 0");
   ensureColumn("tasks", "reminder_minutes", "INTEGER DEFAULT 1440");
   ensureColumn("tasks", "recurrence", "TEXT DEFAULT 'none'");
+  ensureColumn("tasks", "item_type", "TEXT DEFAULT 'task'");
   ensureColumn("tasks", "estimated_minutes", "INTEGER DEFAULT 0");
   ensureColumn("tasks", "created_at", "TEXT");
   ensureColumn("tasks", "updated_at", "TEXT");
@@ -37,6 +38,9 @@ const normalizeTaskStatus = () => {
   );
   db.runSync(
     "UPDATE tasks SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP), updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)",
+  );
+  db.runSync(
+    "UPDATE tasks SET item_type = CASE WHEN recurrence IS NOT NULL AND recurrence != 'none' THEN 'habit' ELSE COALESCE(item_type, 'task') END WHERE item_type IS NULL OR TRIM(item_type) = ''",
   );
 };
 
@@ -72,6 +76,7 @@ const createIndexes = () => {
     CREATE INDEX IF NOT EXISTS idx_tasks_status_due_date ON tasks (status, due_date);
     CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks (project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_workspace_id ON tasks (workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_item_type ON tasks (item_type, status);
     CREATE INDEX IF NOT EXISTS idx_time_entries_task_id ON time_entries (task_id, start_time);
     CREATE INDEX IF NOT EXISTS idx_task_tags_task_id ON task_tags (task_id);
     CREATE INDEX IF NOT EXISTS idx_task_dependencies_task_id ON task_dependencies (task_id);
@@ -278,6 +283,7 @@ export const initDatabase = () => {
       project_id INTEGER DEFAULT 1,
       reminder_minutes INTEGER DEFAULT 1440,
       recurrence TEXT DEFAULT 'none',
+      item_type TEXT DEFAULT 'task',
       estimated_minutes INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -445,7 +451,21 @@ const baseTasksQuery = `
     tasks.id DESC
 `;
 
-export const getTasksWithDetails = () => attachTaskRelations(db.getAllSync(baseTasksQuery));
+const getItemsWithDetails = (itemType = null) =>
+  attachTaskRelations(
+    db.getAllSync(
+      itemType
+        ? baseTasksQuery.replace("GROUP BY tasks.id", "WHERE tasks.item_type = ? GROUP BY tasks.id")
+        : baseTasksQuery,
+      itemType ? [itemType] : [],
+    ),
+  );
+
+export const getTasksWithDetails = () => getItemsWithDetails("task");
+
+export const getHabitsWithDetails = () => getItemsWithDetails("habit");
+
+export const getAllItemsWithDetails = () => getItemsWithDetails();
 
 export const getTasks = () => getTasksWithDetails();
 
@@ -474,12 +494,18 @@ export const getTaskById = (taskId) => {
   return task ? attachTaskRelations([task])[0] : null;
 };
 
+export const getHabitById = (taskId) => {
+  const item = getTaskById(taskId);
+  return item?.item_type === "habit" ? item : null;
+};
+
 export const insertTask = (title, description, priority = "Medium", categoryId = 1) =>
   createTask({ title, description, priority, categoryId });
 
 export const createTask = ({
   title,
   description = "",
+  itemType = "task",
   priority = "Medium",
   status = "Todo",
   categoryId = 1,
@@ -499,8 +525,8 @@ export const createTask = ({
     `
       INSERT INTO tasks (
         title, description, priority, status, category_id, workspace_id, project_id, due_date,
-        completed, reminder_minutes, recurrence, estimated_minutes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        completed, reminder_minutes, recurrence, item_type, estimated_minutes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       title.trim(),
@@ -514,6 +540,7 @@ export const createTask = ({
       completed,
       reminderMinutes,
       recurrence,
+      itemType,
       Number(estimatedMinutes) || 0,
       now,
       now,
@@ -524,10 +551,40 @@ export const createTask = ({
   return getTaskById(result.lastInsertRowId);
 };
 
+export const createHabit = ({
+  title,
+  description = "",
+  categoryId = 1,
+  workspaceId = 1,
+  projectId = 1,
+  dueDate = null,
+  reminderMinutes = 60,
+  recurrence = "daily",
+  tags = [],
+}) =>
+  createTask({
+    title,
+    description,
+    itemType: "habit",
+    priority: "Medium",
+    status: "Todo",
+    categoryId,
+    workspaceId,
+    projectId,
+    dueDate,
+    reminderMinutes,
+    recurrence,
+    estimatedMinutes: 0,
+    tags,
+    dependencyIds: [],
+    subtasks: [],
+  });
+
 export const updateTask = ({
   id,
   title,
   description = "",
+  itemType = "task",
   priority = "Medium",
   status = "Todo",
   categoryId = 1,
@@ -541,11 +598,12 @@ export const updateTask = ({
   dependencyIds = [],
   subtasks = [],
 }) => {
+  const completed = status === "Done" ? 1 : 0;
   db.runSync(
     `
       UPDATE tasks
       SET title = ?, description = ?, priority = ?, status = ?, category_id = ?, workspace_id = ?, project_id = ?,
-          due_date = ?, completed = ?, reminder_minutes = ?, recurrence = ?, estimated_minutes = ?,
+          due_date = ?, completed = ?, reminder_minutes = ?, recurrence = ?, item_type = ?, estimated_minutes = ?,
           updated_at = ?
       WHERE id = ?
     `,
@@ -558,9 +616,10 @@ export const updateTask = ({
       workspaceId,
       projectId,
       dueDate,
-      status === "Done" ? 1 : 0,
+      completed,
       reminderMinutes,
       recurrence,
+      itemType,
       Number(estimatedMinutes) || 0,
       new Date().toISOString(),
       id,
@@ -570,6 +629,38 @@ export const updateTask = ({
   saveTaskRelations(id, { tags, dependencyIds, subtasks });
   return getTaskById(id);
 };
+
+export const updateHabit = ({
+  id,
+  title,
+  description = "",
+  categoryId = 1,
+  workspaceId = 1,
+  projectId = 1,
+  dueDate = null,
+  reminderMinutes = 60,
+  recurrence = "daily",
+  tags = [],
+  status = "Todo",
+}) =>
+  updateTask({
+    id,
+    title,
+    description,
+    itemType: "habit",
+    priority: "Medium",
+    status,
+    categoryId,
+    workspaceId,
+    projectId,
+    dueDate,
+    reminderMinutes,
+    recurrence,
+    estimatedMinutes: 0,
+    tags,
+    dependencyIds: [],
+    subtasks: [],
+  });
 
 export const setTaskStatus = (taskId, status) => {
   db.runSync(
@@ -614,6 +705,7 @@ export const completeTaskAndGenerateNext = (taskId) => {
   const nextTask = createTask({
     title: task.title,
     description: task.description,
+    itemType: task.item_type || "task",
     priority: task.priority,
     status: "Todo",
     workspaceId: task.workspace_id || 1,
@@ -641,6 +733,7 @@ export const getTaskInsights = () => {
         SUM(CASE WHEN due_date IS NOT NULL AND due_date < CURRENT_TIMESTAMP AND status != 'Done' THEN 1 ELSE 0 END) AS overdue_tasks,
         COALESCE(SUM(estimated_minutes), 0) AS estimated_minutes
       FROM tasks
+      WHERE item_type = 'task'
     `,
   );
 
@@ -649,6 +742,7 @@ export const getTaskInsights = () => {
       SELECT substr(updated_at, 1, 10) AS day, COUNT(*) AS completed
       FROM tasks
       WHERE status = 'Done'
+        AND item_type = 'task'
         AND updated_at >= datetime('now', '-6 days')
       GROUP BY substr(updated_at, 1, 10)
       ORDER BY day ASC
@@ -677,11 +771,62 @@ export const getBurndownSnapshot = () =>
              COUNT(*) AS created_count,
              SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS done_count
       FROM tasks
-      WHERE created_at >= datetime('now', '-6 days')
+      WHERE item_type = 'task'
+        AND created_at >= datetime('now', '-6 days')
       GROUP BY substr(created_at, 1, 10)
       ORDER BY day ASC
     `,
   );
+
+export const getHabitInsights = () => {
+  const totals = db.getFirstSync(
+    `
+      SELECT
+        COUNT(*) AS total_habits,
+        SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS completed_habits,
+        SUM(CASE WHEN status != 'Done' THEN 1 ELSE 0 END) AS pending_habits,
+        SUM(CASE WHEN recurrence = 'daily' THEN 1 ELSE 0 END) AS daily_habits,
+        SUM(CASE WHEN recurrence = 'weekly' THEN 1 ELSE 0 END) AS weekly_habits
+      FROM tasks
+      WHERE item_type = 'habit'
+    `,
+  );
+
+  const weeklyCompletion = db.getAllSync(
+    `
+      SELECT substr(updated_at, 1, 10) AS day, COUNT(*) AS completed
+      FROM tasks
+      WHERE item_type = 'habit'
+        AND status = 'Done'
+        AND updated_at >= datetime('now', '-6 days')
+      GROUP BY substr(updated_at, 1, 10)
+      ORDER BY day ASC
+    `,
+  );
+
+  const habits = getHabitsWithDetails();
+  const longestStreak = habits.reduce((best, habit) => {
+    if (habit.status !== "Done" || !habit.updated_at) {
+      return best;
+    }
+
+    const updated = new Date(habit.updated_at);
+    const dueDate = habit.due_date ? new Date(habit.due_date) : null;
+    if (habit.recurrence === "daily" && dueDate && updated.toDateString() === dueDate.toDateString()) {
+      return Math.max(best, 1);
+    }
+    if (habit.recurrence === "weekly" && dueDate && updated >= dueDate) {
+      return Math.max(best, 1);
+    }
+    return best;
+  }, 0);
+
+  return {
+    ...totals,
+    longest_streak: longestStreak,
+    weekly_completion: weeklyCompletion,
+  };
+};
 
 export const startTaskTimer = (taskId) => {
   db.runSync("UPDATE time_entries SET end_time = ?, duration_minutes = CAST((julianday(?) - julianday(start_time)) * 24 * 60 AS INTEGER) WHERE end_time IS NULL", [
