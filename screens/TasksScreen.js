@@ -34,6 +34,54 @@ const STATUS_OPTIONS = ["all", "Todo", "In Progress", "Done"];
 const PRIORITY_OPTIONS = ["all", "Low", "Medium", "High"];
 const PAGE_SIZE = 12;
 
+const isTaskOverdue = (task) => {
+  if (!task?.due_date || task.status === "Done") {
+    return false;
+  }
+
+  const dueDate = new Date(task.due_date);
+  if (Number.isNaN(dueDate.getTime())) {
+    return false;
+  }
+
+  return dueDate.getTime() < Date.now();
+};
+
+const getTaskSortWeight = (task) => {
+  const overdue = isTaskOverdue(task);
+  const hasDueDate = Boolean(task?.due_date);
+  const dueTime = hasDueDate ? new Date(task.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+  const safeDueTime = Number.isNaN(dueTime) ? Number.MAX_SAFE_INTEGER : dueTime;
+
+  return {
+    overdueRank: overdue ? 0 : 1,
+    undatedRank: hasDueDate ? 0 : 1,
+    dueTime: safeDueTime,
+    doneRank: task.status === "Done" ? 1 : 0,
+    idRank: -(Number(task.id) || 0),
+  };
+};
+
+const compareTasksByUrgency = (leftTask, rightTask) => {
+  const left = getTaskSortWeight(leftTask);
+  const right = getTaskSortWeight(rightTask);
+
+  if (left.overdueRank !== right.overdueRank) {
+    return left.overdueRank - right.overdueRank;
+  }
+  if (left.doneRank !== right.doneRank) {
+    return left.doneRank - right.doneRank;
+  }
+  if (left.undatedRank !== right.undatedRank) {
+    return left.undatedRank - right.undatedRank;
+  }
+  if (left.dueTime !== right.dueTime) {
+    return left.dueTime - right.dueTime;
+  }
+
+  return left.idRank - right.idRank;
+};
+
 const groupBy = (items, getKey) =>
   items.reduce((accumulator, item) => {
     const key = getKey(item);
@@ -116,6 +164,7 @@ function TaskCard({
   onUpdateStatus,
   theme,
 }) {
+  const isOverdue = isTaskOverdue(item);
   const dueLabel = item.due_date
     ? new Date(item.due_date).toLocaleString(undefined, {
         month: "short",
@@ -126,9 +175,20 @@ function TaskCard({
     : null;
 
   return (
-    <View style={[styles.taskCard, { borderColor: `${item.category_color || theme.accent}55` }]}>
+    <View
+      style={[
+        styles.taskCard,
+        { borderColor: isOverdue ? "rgba(248, 113, 113, 0.6)" : `${item.category_color || theme.accent}55` },
+        isOverdue && styles.taskCardOverdue,
+      ]}
+    >
       <View style={styles.cardTop}>
         <View style={styles.badgeRow}>
+          {isOverdue ? (
+            <View style={styles.overdueBadge}>
+              <Text style={styles.overdueBadgeText}>Overdue</Text>
+            </View>
+          ) : null}
           {item.category_name ? (
             <View
               style={[
@@ -169,6 +229,7 @@ function TaskCard({
 
       <Text style={styles.metaText}>Status: {item.status}</Text>
       {dueLabel ? <Text style={styles.metaText}>Deadline: {dueLabel}</Text> : null}
+      {isOverdue ? <Text style={styles.overdueText}>Action needed: this task is past due.</Text> : null}
       {item.hasBlockingDependency ? (
         <Text style={[styles.metaText, styles.alertText]}>Waiting on another task to finish first.</Text>
       ) : null}
@@ -263,14 +324,23 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
       result = result.filter((task) => task.priority === filters.priority);
     }
 
-    return result;
+    return result.sort(compareTasksByUrgency);
   }, [filters, search, tasks]);
 
   const pagedTasks = useMemo(
     () => filteredTasks.slice(0, visibleCount),
     [filteredTasks, visibleCount],
   );
-  const boardGroups = useMemo(() => groupBy(filteredTasks, (task) => task.status), [filteredTasks]);
+  const boardGroups = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(groupBy(filteredTasks, (task) => task.status)).map(([key, items]) => [
+          key,
+          [...items].sort(compareTasksByUrgency),
+        ]),
+      ),
+    [filteredTasks],
+  );
   const calendarGroups = useMemo(
     () =>
       groupBy(
@@ -280,10 +350,7 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
     [filteredTasks],
   );
   const timelineTasks = useMemo(
-    () =>
-      [...filteredTasks]
-        .filter((task) => task.due_date)
-        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date)),
+    () => [...filteredTasks].filter((task) => task.due_date).sort(compareTasksByUrgency),
     [filteredTasks],
   );
 
@@ -494,22 +561,24 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
       {Object.keys(calendarGroups).length === 0 ? (
         <Text style={styles.metaText}>No scheduled tasks yet.</Text>
       ) : (
-        Object.entries(calendarGroups).map(([day, dayTasks]) => (
-          <View key={day} style={styles.calendarGroup}>
-            <Text style={styles.calendarTitle}>{day}</Text>
-            {dayTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                item={task}
-                onDelete={onDelete}
-                onEdit={onOpenPlanner}
-                onToggleDone={onToggleDone}
-                onUpdateStatus={onUpdateStatus}
-                theme={theme}
-              />
-            ))}
-          </View>
-        ))
+        Object.entries(calendarGroups)
+          .sort(([leftDay], [rightDay]) => new Date(leftDay) - new Date(rightDay))
+          .map(([day, dayTasks]) => (
+            <View key={day} style={styles.calendarGroup}>
+              <Text style={styles.calendarTitle}>{day}</Text>
+              {[...dayTasks].sort(compareTasksByUrgency).map((task) => (
+                <TaskCard
+                  key={task.id}
+                  item={task}
+                  onDelete={onDelete}
+                  onEdit={onOpenPlanner}
+                  onToggleDone={onToggleDone}
+                  onUpdateStatus={onUpdateStatus}
+                  theme={theme}
+                />
+              ))}
+            </View>
+          ))
       )}
     </View>
   );
@@ -817,8 +886,31 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
+  taskCardOverdue: {
+    backgroundColor: "rgba(57, 17, 24, 0.82)",
+    shadowColor: "#7F1D1D",
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
   cardTop: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
   badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
+  overdueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.38)",
+  },
+  overdueBadgeText: {
+    color: "#FECACA",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -829,6 +921,7 @@ const styles = StyleSheet.create({
   taskTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24, flexShrink: 1 },
   taskDescription: { color: "#94A3B8", fontSize: 13, lineHeight: 20, flexShrink: 1 },
   metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18, flexShrink: 1 },
+  overdueText: { color: "#FCA5A5", fontSize: 12, lineHeight: 18, fontWeight: "700" },
   alertText: { color: "#FCA5A5" },
   cardButtons: { flexDirection: "row", gap: 10 },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
