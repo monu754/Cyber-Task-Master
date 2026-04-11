@@ -21,14 +21,13 @@ import {
   removeTask,
   setTaskStatus,
 } from "../database";
-import { loadSavedFilters, saveSavedFilters } from "../utils/preferences";
+import { getThemeTextStyle } from "../utils/preferences";
 import { cancelTaskNotifications, scheduleSingleNotification } from "../utils/taskNotifications";
 
 const VIEW_OPTIONS = [
   { key: "list", label: "List" },
-  { key: "board", label: "Board" },
   { key: "calendar", label: "Calendar" },
-  { key: "timeline", label: "Timeline" },
+  { key: "history", label: "History" },
 ];
 const STATUS_OPTIONS = ["all", "Todo", "In Progress", "Done"];
 const PRIORITY_OPTIONS = ["all", "Low", "Medium", "High"];
@@ -147,23 +146,16 @@ function FilterSection({ children, title }) {
   );
 }
 
-function SectionTitle({ action, title }) {
+function SectionTitle({ action, theme, title }) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, getThemeTextStyle(theme, "section")]}>{title}</Text>
       {action}
     </View>
   );
 }
 
-function TaskCard({
-  item,
-  onDelete,
-  onEdit,
-  onToggleDone,
-  onUpdateStatus,
-  theme,
-}) {
+function TaskCard({ item, onDelete, onEdit, onToggleDone, onUpdateStatus, theme }) {
   const isOverdue = isTaskOverdue(item);
   const dueLabel = item.due_date
     ? new Date(item.due_date).toLocaleString(undefined, {
@@ -173,6 +165,15 @@ function TaskCard({
         minute: "2-digit",
       })
     : null;
+  const completedLabel =
+    item.status === "Done" && item.updated_at
+      ? new Date(item.updated_at).toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
     <View
@@ -220,7 +221,7 @@ function TaskCard({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.taskTitle}>{item.title}</Text>
+      <Text style={[styles.taskTitle, getThemeTextStyle(theme, "section")]}>{item.title}</Text>
       {item.description ? (
         <Text style={styles.taskDescription} numberOfLines={2}>
           {item.description}
@@ -229,6 +230,7 @@ function TaskCard({
 
       <Text style={styles.metaText}>Status: {item.status}</Text>
       {dueLabel ? <Text style={styles.metaText}>Deadline: {dueLabel}</Text> : null}
+      {completedLabel ? <Text style={styles.metaText}>Completed: {completedLabel}</Text> : null}
       {isOverdue ? <Text style={styles.overdueText}>Action needed: this task is past due.</Text> : null}
       {item.hasBlockingDependency ? (
         <Text style={[styles.metaText, styles.alertText]}>Waiting on another task to finish first.</Text>
@@ -282,20 +284,19 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
       ? "Search tasks and notes"
       : "Search tasks, notes, and categories";
   const [tasks, setTasks] = useState([]);
-  const [savedFilters, setSavedFilters] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [viewMode, setViewMode] = useState("list");
   const [search, setSearch] = useState("");
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [filters, setFilters] = useState({
+    category: "all",
     status: "all",
     priority: "all",
   });
 
-  const loadScreenData = useCallback(async () => {
+  const loadScreenData = useCallback(() => {
     setTasks(getTasksWithDetails());
-    setSavedFilters(await loadSavedFilters());
   }, []);
 
   useEffect(() => {
@@ -317,6 +318,9 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
       );
     }
 
+    if (filters.category !== "all") {
+      result = result.filter((task) => task.category_name === filters.category);
+    }
     if (filters.status !== "all") {
       result = result.filter((task) => task.status === filters.status);
     }
@@ -327,36 +331,37 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
     return result.sort(compareTasksByUrgency);
   }, [filters, search, tasks]);
 
-  const pagedTasks = useMemo(
-    () => filteredTasks.slice(0, visibleCount),
-    [filteredTasks, visibleCount],
+  const categoryOptions = useMemo(
+    () => ["all", ...new Set(tasks.map((task) => task.category_name).filter(Boolean))],
+    [tasks],
   );
-  const boardGroups = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(groupBy(filteredTasks, (task) => task.status)).map(([key, items]) => [
-          key,
-          [...items].sort(compareTasksByUrgency),
-        ]),
-      ),
+  const activeTasks = useMemo(
+    () => filteredTasks.filter((task) => task.status !== "Done"),
     [filteredTasks],
+  );
+  const pagedTasks = useMemo(
+    () => activeTasks.slice(0, visibleCount),
+    [activeTasks, visibleCount],
   );
   const calendarGroups = useMemo(
     () =>
       groupBy(
-        filteredTasks.filter((task) => task.due_date),
+        activeTasks.filter((task) => task.due_date),
         (task) => new Date(task.due_date).toDateString(),
       ),
-    [filteredTasks],
+    [activeTasks],
   );
-  const timelineTasks = useMemo(
-    () => [...filteredTasks].filter((task) => task.due_date).sort(compareTasksByUrgency),
+  const historyTasks = useMemo(
+    () =>
+      [...filteredTasks]
+        .filter((task) => task.status === "Done")
+        .sort((leftTask, rightTask) => new Date(rightTask.updated_at) - new Date(leftTask.updated_at)),
     [filteredTasks],
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadScreenData();
+    loadScreenData();
     setRefreshing(false);
   };
 
@@ -398,20 +403,6 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
     ]);
   };
 
-  const onSaveCurrentFilter = async () => {
-    const nextSavedFilters = [
-      ...savedFilters,
-      {
-        id: Date.now().toString(),
-        label: `${viewMode} | ${savedFilters.length + 1}`,
-        filters,
-        viewMode,
-      },
-    ].slice(-6);
-    setSavedFilters(nextSavedFilters);
-    await saveSavedFilters(nextSavedFilters);
-  };
-
   const renderTaskCard = ({ item }) => (
     <TaskCard
       item={item}
@@ -426,11 +417,12 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
   const listHeader = (
     <View style={styles.header}>
       <SectionBadge iconName="grid-outline" label="Task system" theme={theme} />
-      <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>Workspace</Text>
+      <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow"), { color: theme?.accentSoft || "#7DD3FC" }]}>Workspace</Text>
       <Text
         style={[
           styles.title,
           isCompact && styles.titleCompact,
+          getThemeTextStyle(theme, "title"),
           { color: theme?.text || "#F8FAFC" },
         ]}
       >
@@ -440,6 +432,7 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
         style={[
           styles.subtitle,
           isCompact && styles.subtitleCompact,
+          getThemeTextStyle(theme, "subtitle"),
           { color: theme?.muted || "#94A3B8" },
         ]}
       >
@@ -470,7 +463,13 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.segmentedWrap, isCompact && styles.segmentedWrapCompact, isSmallScreen && styles.segmentedWrapSmall]}>
+      <View
+        style={[
+          styles.segmentedWrap,
+          isCompact && styles.segmentedWrapCompact,
+          isSmallScreen && styles.segmentedWrapSmall,
+        ]}
+      >
         {VIEW_OPTIONS.map((item) => (
           <SegmentedOption
             key={item.key}
@@ -478,8 +477,8 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
               isVeryCompact
                 ? item.key === "calendar"
                   ? "Cal"
-                  : item.key === "timeline"
-                    ? "Time"
+                  : item.key === "history"
+                    ? "Past"
                     : item.label
                 : item.label
             }
@@ -488,74 +487,12 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
           />
         ))}
       </View>
-
-      <SectionTitle
-        title="Saved filters"
-        action={
-          <TouchableOpacity onPress={onSaveCurrentFilter}>
-            <Text style={styles.linkText}>Save current</Text>
-          </TouchableOpacity>
-        }
-      />
-      <HorizontalChips>
-        {savedFilters.length ? (
-          savedFilters.map((item) => (
-            <FilterChip
-              key={item.id}
-              label={item.label}
-              active={false}
-              onPress={() => {
-                setFilters(item.filters);
-                setViewMode(item.viewMode || "list");
-              }}
-            />
-          ))
-        ) : (
-          <Text style={styles.metaText}>No saved filters yet.</Text>
-        )}
-      </HorizontalChips>
-    </View>
-  );
-
-  const renderBoardView = () => (
-    <View style={styles.viewSection}>
-      <Text style={styles.boardIntro}>
-        Board view groups tasks by status so users can quickly understand what is pending,
-        in progress, and finished.
-      </Text>
-      {["Todo", "In Progress", "Done"].map((status) => (
-        <View key={status} style={styles.boardSection}>
-          <View style={styles.boardSectionHeader}>
-            <Text style={styles.boardTitle}>{status}</Text>
-            <View style={styles.boardCount}>
-              <Text style={styles.boardCountText}>{(boardGroups[status] || []).length}</Text>
-            </View>
-          </View>
-          {(boardGroups[status] || []).length ? (
-            (boardGroups[status] || []).map((task) => (
-              <TaskCard
-                key={task.id}
-                item={task}
-                onDelete={onDelete}
-                onEdit={onOpenPlanner}
-                onToggleDone={onToggleDone}
-                onUpdateStatus={onUpdateStatus}
-                theme={theme}
-              />
-            ))
-          ) : (
-            <View style={styles.emptyLane}>
-              <Text style={styles.emptyLaneText}>No tasks in {status.toLowerCase()}.</Text>
-            </View>
-          )}
-        </View>
-      ))}
     </View>
   );
 
   const renderCalendarView = () => (
     <View style={styles.viewSection}>
-      <Text style={styles.boardIntro}>
+      <Text style={[styles.boardIntro, getThemeTextStyle(theme, "body")]}>
         Calendar view groups tasks by due date so users can see what is coming up each day.
       </Text>
       {Object.keys(calendarGroups).length === 0 ? (
@@ -565,7 +502,7 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
           .sort(([leftDay], [rightDay]) => new Date(leftDay) - new Date(rightDay))
           .map(([day, dayTasks]) => (
             <View key={day} style={styles.calendarGroup}>
-              <Text style={styles.calendarTitle}>{day}</Text>
+              <Text style={[styles.calendarTitle, getThemeTextStyle(theme, "section")]}>{day}</Text>
               {[...dayTasks].sort(compareTasksByUrgency).map((task) => (
                 <TaskCard
                   key={task.id}
@@ -583,43 +520,24 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
     </View>
   );
 
-  const renderTimelineView = () => (
+  const renderHistoryView = () => (
     <View style={styles.viewSection}>
-      <Text style={styles.boardIntro}>
-        Timeline view shows scheduled work in time order from earliest to latest.
+      <Text style={[styles.boardIntro, getThemeTextStyle(theme, "body")]}>
+        History keeps every completed one-time task in one place so finished work is easy to revisit.
       </Text>
-      {timelineTasks.length === 0 ? (
-        <Text style={styles.metaText}>Add due dates to build a timeline.</Text>
+      {historyTasks.length === 0 ? (
+        <Text style={styles.metaText}>No completed tasks match these filters yet.</Text>
       ) : (
-        timelineTasks.map((task, index) => (
-          <View key={task.id} style={styles.timelineRow}>
-            <View style={styles.timelineTrack}>
-              <View
-                style={[
-                  styles.timelineDot,
-                  {
-                    backgroundColor: task.hasBlockingDependency
-                      ? "#FB7185"
-                      : theme?.accent || "#2563EB",
-                  },
-                ]}
-              />
-              {index !== timelineTasks.length - 1 ? <View style={styles.timelineLine} /> : null}
-            </View>
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineDate}>
-                {new Date(task.due_date).toLocaleString()}
-              </Text>
-              <TaskCard
-                item={task}
-                onDelete={onDelete}
-                onEdit={onOpenPlanner}
-                onToggleDone={onToggleDone}
-                onUpdateStatus={onUpdateStatus}
-                theme={theme}
-              />
-            </View>
-          </View>
+        historyTasks.map((task) => (
+          <TaskCard
+            key={task.id}
+            item={task}
+            onDelete={onDelete}
+            onEdit={onOpenPlanner}
+            onToggleDone={onToggleDone}
+            onUpdateStatus={onUpdateStatus}
+            theme={theme}
+          />
         ))
       )}
     </View>
@@ -636,7 +554,7 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
           ListHeaderComponent={listHeader}
           ListEmptyComponent={<Text style={styles.emptyText}>No matching tasks.</Text>}
           ListFooterComponent={
-            filteredTasks.length > visibleCount ? (
+            activeTasks.length > visibleCount ? (
               <TouchableOpacity
                 style={styles.loadMoreButton}
                 onPress={() => setVisibleCount((current) => current + PAGE_SIZE)}
@@ -679,9 +597,8 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
           showsVerticalScrollIndicator={false}
         >
           {listHeader}
-          {viewMode === "board" ? renderBoardView() : null}
           {viewMode === "calendar" ? renderCalendarView() : null}
-          {viewMode === "timeline" ? renderTimelineView() : null}
+          {viewMode === "history" ? renderHistoryView() : null}
         </ScrollView>
       )}
 
@@ -702,12 +619,24 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
           <View style={styles.modalCard}>
             <SectionTitle
               title="Filters"
+              theme={theme}
               action={
                 <TouchableOpacity onPress={() => setIsFilterModalVisible(false)}>
                   <Text style={styles.linkText}>Done</Text>
                 </TouchableOpacity>
               }
             />
+
+            <FilterSection title="Category">
+              {categoryOptions.map((item) => (
+                <FilterChip
+                  key={item}
+                  label={item}
+                  active={filters.category === item}
+                  onPress={() => setFilters((current) => ({ ...current, category: item }))}
+                />
+              ))}
+            </FilterSection>
 
             <FilterSection title="Status">
               {STATUS_OPTIONS.map((item) => (
@@ -736,6 +665,7 @@ export default function TasksScreen({ bottomInset, dataVersion, isActive, onOpen
                 style={styles.modalSecondaryButton}
                 onPress={() =>
                   setFilters({
+                    category: "all",
                     status: "all",
                     priority: "all",
                   })
@@ -927,52 +857,8 @@ const styles = StyleSheet.create({
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
   viewSection: { gap: 16 },
   boardIntro: { color: "#B5C6D6", fontSize: 14, lineHeight: 21 },
-  boardSection: {
-    backgroundColor: "rgba(15,23,42,0.4)",
-    borderRadius: 24,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.12)",
-  },
-  boardSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  boardTitle: { color: "#F8FAFC", fontSize: 19, fontWeight: "800", flexShrink: 1 },
-  boardCount: {
-    minWidth: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(37,99,235,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  boardCountText: { color: "#F8FAFC", fontWeight: "800" },
-  emptyLane: {
-    minHeight: 76,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "rgba(148,163,184,0.24)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyLaneText: { color: "#90A6BC", fontSize: 13, fontWeight: "600" },
   calendarGroup: { gap: 10 },
   calendarTitle: { color: "#F8FAFC", fontSize: 18, fontWeight: "800", flexShrink: 1 },
-  timelineRow: { flexDirection: "row", gap: 12 },
-  timelineTrack: { width: 20, alignItems: "center" },
-  timelineDot: { width: 14, height: 14, borderRadius: 7, marginTop: 20 },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: "rgba(148,163,184,0.22)",
-    marginTop: 4,
-  },
-  timelineContent: { flex: 1 },
-  timelineDate: { color: "#7DD3FC", fontSize: 13, fontWeight: "700", marginBottom: 8, flexShrink: 1 },
   loadMoreButton: {
     alignSelf: "center",
     minWidth: 140,

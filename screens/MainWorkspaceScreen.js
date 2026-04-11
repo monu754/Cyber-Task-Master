@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { THEME_OPTIONS } from "../utils/preferences";
+import { getThemeTextStyle, THEME_OPTIONS } from "../utils/preferences";
 import AddHabitScreen from "./AddHabitScreen";
 import AddTaskScreen from "./AddTaskScreen";
 import HabitsScreen from "./HabitsScreen";
@@ -302,14 +302,20 @@ export default function MainWorkspaceScreen({ onChangeTheme, themeKey }) {
                   goToIndex(item.index);
                 }}
               >
-                <View style={[styles.navIconWrap, item.isActive && styles.navIconWrapActive]}>
+                <View
+                  style={[
+                    styles.navIconWrap,
+                    { borderRadius: theme?.icon?.radius || 11, transform: [{ rotate: theme?.icon?.tilt || "0deg" }] },
+                    item.isActive && styles.navIconWrapActive,
+                  ]}
+                >
                   <MaterialCommunityIcons
                     name={item.iconName}
                     size={19}
-                    color={item.isActive ? "#F8FAFC" : "rgba(148, 163, 184, 0.82)"}
+                    color={item.isActive ? theme?.text || "#F8FAFC" : theme?.muted || "rgba(148, 163, 184, 0.82)"}
                   />
                 </View>
-                <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
+                <Text style={[styles.navLabel, getThemeTextStyle(theme, "badge"), item.isActive && styles.navLabelActive]}>
                   {isCompact ? item.shortLabel : item.label}
                 </Text>
               </TouchableOpacity>

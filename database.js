@@ -579,38 +579,80 @@ const getItemsWithDetails = (itemType = null) =>
 
 export const getTasksWithDetails = () => getItemsWithDetails("task");
 
+const getLatestHabitResult = (habitGroupId, excludedTaskId = null) => {
+  const params = excludedTaskId ? [habitGroupId, excludedTaskId] : [habitGroupId];
+  const exclusionClause = excludedTaskId ? "AND id != ?" : "";
+
+  return db.getFirstSync(
+    `
+      SELECT id, status, due_date, updated_at
+      FROM tasks
+      WHERE item_type = 'habit'
+        AND habit_group_id = ?
+        AND status IN ('Done', 'Missed')
+        ${exclusionClause}
+      ORDER BY COALESCE(due_date, updated_at) DESC, updated_at DESC, id DESC
+      LIMIT 1
+    `,
+    params,
+  );
+};
+
+const attachHabitState = (habits) =>
+  habits.map((habit) => {
+    const currentGroupId = habit.habit_group_id || habit.id;
+    const latestResult =
+      habit.status === "Done" || habit.status === "Missed"
+        ? getLatestHabitResult(currentGroupId)
+        : getLatestHabitResult(currentGroupId, habit.id);
+    const latestResultAt = latestResult?.due_date || latestResult?.updated_at || null;
+    const shouldResetStreak =
+      latestResult?.status === "Missed" &&
+      (!habit.last_completed_at || new Date(latestResultAt) >= new Date(habit.last_completed_at));
+
+    return {
+      ...habit,
+      current_streak: shouldResetStreak ? 0 : habit.current_streak || 0,
+      last_result_status: latestResult?.status || null,
+      last_result_at: latestResultAt,
+      can_revert_latest_result: Boolean(latestResult),
+    };
+  });
+
 export const getHabitsWithDetails = () =>
-  attachHabitStats(
-    attachTaskRelations(
-      db.getAllSync(
-        `
-          SELECT tasks.*,
-                 categories.name AS category_name,
-                 categories.color AS category_color,
-                 workspaces.name AS workspace_name,
-                 workspaces.color AS workspace_color,
-                 projects.name AS project_name,
-                 projects.color AS project_color
-          FROM tasks
-          LEFT JOIN categories ON categories.id = tasks.category_id
-          LEFT JOIN workspaces ON workspaces.id = tasks.workspace_id
-          LEFT JOIN projects ON projects.id = tasks.project_id
-          WHERE tasks.item_type = 'habit'
-            AND tasks.id IN (
-              SELECT COALESCE(
-                MAX(CASE WHEN status != 'Done' THEN id END),
-                MAX(id)
+  attachHabitState(
+    attachHabitStats(
+      attachTaskRelations(
+        db.getAllSync(
+          `
+            SELECT tasks.*,
+                   categories.name AS category_name,
+                   categories.color AS category_color,
+                   workspaces.name AS workspace_name,
+                   workspaces.color AS workspace_color,
+                   projects.name AS project_name,
+                   projects.color AS project_color
+            FROM tasks
+            LEFT JOIN categories ON categories.id = tasks.category_id
+            LEFT JOIN workspaces ON workspaces.id = tasks.workspace_id
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE tasks.item_type = 'habit'
+              AND tasks.id IN (
+                SELECT COALESCE(
+                  MAX(CASE WHEN status NOT IN ('Done', 'Missed') THEN id END),
+                  MAX(id)
+                )
+                FROM tasks
+                WHERE item_type = 'habit'
+                GROUP BY habit_group_id
               )
-              FROM tasks
-              WHERE item_type = 'habit'
-              GROUP BY habit_group_id
-            )
-          ORDER BY
-            CASE WHEN tasks.due_date IS NOT NULL THEN 0 ELSE 1 END ASC,
-            tasks.due_date ASC,
-            tasks.updated_at DESC,
-            tasks.id DESC
-        `,
+            ORDER BY
+              CASE WHEN tasks.due_date IS NOT NULL THEN 0 ELSE 1 END ASC,
+              tasks.due_date ASC,
+              tasks.updated_at DESC,
+              tasks.id DESC
+          `,
+        ),
       ),
     ),
   );
@@ -897,6 +939,77 @@ export const completeTaskAndGenerateNext = (taskId) => {
   });
 
   return { nextTask, task: completedTask };
+};
+
+export const resolveHabitAndGenerateNext = (habitId, status) => {
+  const habit = getHabitById(habitId);
+  if (!habit) {
+    return { nextTask: null, task: null };
+  }
+
+  const resolvedHabit = setTaskStatus(habitId, status);
+  const nextDueDate = nextOccurrenceForRule(habit.due_date, habit.recurrence);
+
+  if (!nextDueDate) {
+    return { nextTask: null, task: resolvedHabit };
+  }
+
+  const nextHabit = createTask({
+    title: habit.title,
+    description: habit.description,
+    itemType: "habit",
+    priority: habit.priority,
+    status: "Todo",
+    categoryId: habit.category_id || 1,
+    workspaceId: habit.workspace_id || 1,
+    projectId: habit.project_id || 1,
+    dueDate: nextDueDate,
+    reminderMinutes: habit.reminder_minutes,
+    recurrence: habit.recurrence,
+    estimatedMinutes: habit.estimated_minutes || 0,
+    habitGroupId: habit.habit_group_id || habit.id,
+    tags: habit.tags,
+    dependencyIds: [],
+    subtasks: [],
+  });
+
+  return { nextTask: nextHabit, task: resolvedHabit };
+};
+
+export const missHabitAndGenerateNext = (habitId) =>
+  resolveHabitAndGenerateNext(habitId, "Missed");
+
+export const revertHabitOutcome = (habitId) => {
+  const currentHabit = getHabitById(habitId);
+  if (!currentHabit) {
+    return null;
+  }
+
+  if (currentHabit.status === "Done" || currentHabit.status === "Missed") {
+    return setTaskStatus(currentHabit.id, "Todo");
+  }
+
+  const groupId = currentHabit.habit_group_id || currentHabit.id;
+  const previousResult = db.getFirstSync(
+    `
+      SELECT id
+      FROM tasks
+      WHERE item_type = 'habit'
+        AND habit_group_id = ?
+        AND id != ?
+        AND status IN ('Done', 'Missed')
+      ORDER BY COALESCE(due_date, updated_at) DESC, updated_at DESC, id DESC
+      LIMIT 1
+    `,
+    [groupId, currentHabit.id],
+  );
+
+  if (!previousResult) {
+    return null;
+  }
+
+  removeTask(currentHabit.id);
+  return setTaskStatus(previousResult.id, "Todo");
 };
 
 export const getTaskInsights = () => {

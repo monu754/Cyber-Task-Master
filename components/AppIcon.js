@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { getThemeTextStyle } from "../utils/preferences";
 
 const resolveTone = (theme, tone = "neutral", active = false) => {
   const accent = theme?.accent || "#2563EB";
@@ -56,10 +57,23 @@ export function AppIcon({
   tone = "neutral",
 }) {
   const palette = resolveTone(theme, tone, active);
+  const iconRadius = theme?.icon?.radius || 18;
+  const shellRadius = theme?.icon?.shellRadius || iconRadius;
+  const tilt = theme?.icon?.tilt || "0deg";
+  const borderScale = theme?.icon?.borderScale || 1;
 
   return (
-    <View style={[styles.iconShell, { shadowColor: palette.glow }, style]}>
-      <LinearGradient colors={palette.gradient} style={[styles.iconWrap, { borderColor: palette.border }]}>
+    <View
+      style={[
+        styles.iconShell,
+        { shadowColor: palette.glow, borderRadius: shellRadius, transform: [{ rotate: tilt }] },
+        style,
+      ]}
+    >
+      <LinearGradient
+        colors={palette.gradient}
+        style={[styles.iconWrap, { borderColor: palette.border, borderRadius: iconRadius, borderWidth: borderScale }]}
+      >
         <Ionicons name={name} size={size} color={palette.icon} />
       </LinearGradient>
     </View>
@@ -96,7 +110,7 @@ export function SectionBadge({ iconName, label, theme, tone = "accent" }) {
   return (
     <View style={[styles.badge, { borderColor: palette.border, backgroundColor: palette.gradient[0] }]}>
       <Ionicons name={iconName} size={14} color={palette.icon} />
-      <Text style={[styles.badgeLabel, { color: palette.icon }]}>{label}</Text>
+      <Text style={[styles.badgeLabel, getThemeTextStyle(theme, "badge"), { color: palette.icon }]}>{label}</Text>
     </View>
   );
 }

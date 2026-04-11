@@ -22,6 +22,7 @@ import {
   getCategories,
   updateHabit,
 } from "../database";
+import { getThemeTextStyle } from "../utils/preferences";
 import {
   cancelTaskNotifications,
   normalizeReminderMinutes,
@@ -196,11 +197,11 @@ export default function AddHabitScreen({
           >
             <View style={styles.headerText}>
               <SectionBadge iconName="infinite-outline" label="Habit editor" theme={theme} />
-              <Text style={[styles.eyebrow, { color: themeAccent }]}>Habit tracker</Text>
-              <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
+              <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow"), { color: themeAccent }]}>Habit tracker</Text>
+              <Text style={[styles.title, isCompact && styles.titleCompact, getThemeTextStyle(theme, "title"), { color: themeText }]}>
                 {habitToEdit ? "Edit habit" : "New habit"}
               </Text>
-              <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: themeMuted }]}>
+              <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, getThemeTextStyle(theme, "subtitle"), { color: themeMuted }]}>
                 Build recurring routines here. These entries stay separate from one-time tasks.
               </Text>
             </View>
@@ -300,7 +301,7 @@ export default function AddHabitScreen({
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
               <AppIcon name="arrow-back" size={14} theme={theme} tone="neutral" style={styles.actionIcon} />
-              <Text style={styles.secondaryText}>Back</Text>
+              <Text style={[styles.secondaryText, getThemeTextStyle(theme, "button")]}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: themeAccent }]}
@@ -315,7 +316,7 @@ export default function AddHabitScreen({
                 tone="neutral"
                 style={styles.actionIcon}
               />
-              <Text style={styles.primaryText}>
+              <Text style={[styles.primaryText, getThemeTextStyle(theme, "button")]}>
                 {isSaving ? "Saving..." : habitToEdit ? "Update habit" : "Save habit"}
               </Text>
             </TouchableOpacity>

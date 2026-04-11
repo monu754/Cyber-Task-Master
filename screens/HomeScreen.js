@@ -22,6 +22,7 @@ import {
 } from "../utils/analytics";
 import {
   DEFAULT_DASHBOARD_CONFIG,
+  getThemeTextStyle,
   loadDashboardConfig,
   saveDashboardConfig,
 } from "../utils/preferences";
@@ -177,9 +178,9 @@ export default function HomeScreen({
             style={[styles.updateBanner, isSmallScreen && styles.updateBannerSmall]}
           >
             <View style={styles.updateBannerContent}>
-              <Text style={styles.updateBannerEyebrow}>Update available</Text>
-              <Text style={styles.updateBannerTitle}>A newer app version is ready to install.</Text>
-              <Text style={styles.updateBannerText}>
+              <Text style={[styles.updateBannerEyebrow, getThemeTextStyle(theme, "eyebrow")]}>Update available</Text>
+              <Text style={[styles.updateBannerTitle, getThemeTextStyle(theme, "title")]}>A newer app version is ready to install.</Text>
+              <Text style={[styles.updateBannerText, getThemeTextStyle(theme, "body")]}>
                 {updateState?.isDownloading
                   ? "Downloading the latest release now."
                   : "Install the latest update to get the newest fixes and improvements."}
@@ -193,7 +194,7 @@ export default function HomeScreen({
               onPress={onApplyUpdate}
               disabled={updateState?.isDownloading}
             >
-              <Text style={styles.updateBannerButtonText}>
+              <Text style={[styles.updateBannerButtonText, getThemeTextStyle(theme, "button")]}>
                 {updateState?.isDownloading ? "Applying..." : "Update app"}
               </Text>
             </TouchableOpacity>
@@ -203,13 +204,13 @@ export default function HomeScreen({
         <View style={[styles.headerRow, isSmallScreen && styles.headerRowSmall]}>
           <View style={styles.headerText}>
             <SectionBadge iconName="sparkles-outline" label="Daily rhythm" theme={theme} />
-            <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>
+            <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow"), { color: theme?.accentSoft || "#7DD3FC" }]}>
               Task flow
             </Text>
-            <Text style={[styles.title, isCompact && styles.titleCompact, { color: theme?.text || "#F8FAFC" }]}>
+            <Text style={[styles.title, isCompact && styles.titleCompact, getThemeTextStyle(theme, "title"), { color: theme?.text || "#F8FAFC" }]}>
               Daily Focus
             </Text>
-            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: theme?.muted || "#94A3B8" }]}>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, getThemeTextStyle(theme, "subtitle"), { color: theme?.muted || "#94A3B8" }]}>
               Track progress, customize the dashboard, and keep the week visible without
               leaving your local workspace.
             </Text>
@@ -235,18 +236,18 @@ export default function HomeScreen({
           </Text>
           <View style={[styles.heroActions, isSmallScreen && styles.heroActionsStack]}>
             <TouchableOpacity style={[styles.primaryAction, isSmallScreen && styles.actionButtonSmall]} onPress={onOpenHabitPlanner}>
-              <Text style={styles.primaryActionText}>New habit</Text>
-            </TouchableOpacity>
+            <Text style={[styles.primaryActionText, getThemeTextStyle(theme, "button")]}>New habit</Text>
+          </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryAction, isSmallScreen && styles.actionButtonSmall]} onPress={onOpenPlanner}>
-              <Text style={styles.secondaryActionText}>New task</Text>
+              <Text style={[styles.secondaryActionText, getThemeTextStyle(theme, "button")]}>New task</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
 
         <View style={[styles.metricRow, isSmallScreen && styles.metricRowCompact]}>
-          <MetricCard label="All tasks" value={insights?.total_tasks || 0} />
-          <MetricCard label="In progress" value={insights?.in_progress_tasks || 0} />
-          <MetricCard label="Habits" value={habitInsights?.total_habits || 0} />
+          <MetricCard label="All tasks" value={insights?.total_tasks || 0} theme={theme} />
+          <MetricCard label="In progress" value={insights?.in_progress_tasks || 0} theme={theme} />
+          <MetricCard label="Habits" value={habitInsights?.total_habits || 0} theme={theme} />
         </View>
 
         <View style={[styles.card, isCompact && styles.cardCompact]}>
@@ -305,7 +306,7 @@ export default function HomeScreen({
           </Text>
           <TouchableOpacity style={styles.themePageButton} onPress={onOpenThemes}>
             <AppIcon name="color-palette-outline" size={16} theme={theme} tone="accent" style={styles.themeButtonIcon} />
-            <Text style={styles.themePageButtonText}>Open theme gallery</Text>
+            <Text style={[styles.themePageButtonText, getThemeTextStyle(theme, "button")]}>Open theme gallery</Text>
           </TouchableOpacity>
         </View>
 
@@ -431,11 +432,11 @@ export default function HomeScreen({
   );
 }
 
-function MetricCard({ label, value }) {
+function MetricCard({ label, value, theme }) {
   return (
     <View style={styles.metricCard}>
       <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricLabel, getThemeTextStyle(theme, "badge")]}>{label}</Text>
     </View>
   );
 }
@@ -445,7 +446,7 @@ function SectionHeader({ action, iconName, theme, title }) {
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleWrap}>
         {iconName ? <AppIcon name={iconName} size={14} theme={theme} tone="accent" style={styles.sectionIcon} /> : null}
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={[styles.sectionTitle, getThemeTextStyle(theme, "section")]}>{title}</Text>
       </View>
       {action}
     </View>

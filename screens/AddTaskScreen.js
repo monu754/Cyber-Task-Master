@@ -23,6 +23,7 @@ import {
   getTasksWithDetails,
   updateTask,
 } from "../database";
+import { getThemeTextStyle } from "../utils/preferences";
 import {
   cancelTaskNotifications,
   normalizeReminderMinutes,
@@ -249,11 +250,11 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
           >
             <View style={styles.headerText}>
               <SectionBadge iconName="flash-outline" label="Task editor" theme={theme} />
-              <Text style={[styles.eyebrow, { color: themeAccent }]}>Create task</Text>
-              <Text style={[styles.title, isCompact && styles.titleCompact, { color: themeText }]}>
+              <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow"), { color: themeAccent }]}>Create task</Text>
+              <Text style={[styles.title, isCompact && styles.titleCompact, getThemeTextStyle(theme, "title"), { color: themeText }]}>
                 {taskToEdit ? "Edit task" : "New task"}
               </Text>
-              <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: themeMuted }]}>
+              <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, getThemeTextStyle(theme, "subtitle"), { color: themeMuted }]}>
                 Capture one-time work here. Recurring routines now belong in the habit tracker.
               </Text>
             </View>
@@ -333,6 +334,16 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                   </Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={styles.clearDeadlineButton}
+                onPress={() => {
+                  setShowPicker(false);
+                  setDate(new Date());
+                  setHasDeadline(false);
+                }}
+              >
+                <Text style={styles.clearDeadlineText}>Clear deadline</Text>
+              </TouchableOpacity>
               {showPicker ? (
                 <DateTimePicker
                   value={date}
@@ -392,7 +403,7 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
               <AppIcon name="arrow-back" size={14} theme={theme} tone="neutral" style={styles.actionIcon} />
-              <Text style={styles.secondaryText}>Back</Text>
+              <Text style={[styles.secondaryText, getThemeTextStyle(theme, "button")]}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.primaryButton, { backgroundColor: themeAccent }]}
@@ -407,7 +418,7 @@ export default function AddTaskScreen({ bottomInset, isActive, onCancel, onSaved
                 tone="neutral"
                 style={styles.actionIcon}
               />
-              <Text style={styles.primaryText}>
+              <Text style={[styles.primaryText, getThemeTextStyle(theme, "button")]}>
                 {isSaving ? "Saving..." : taskToEdit ? "Update task" : "Save task"}
               </Text>
             </TouchableOpacity>
@@ -445,6 +456,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 12 },
   dateButton: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(148,163,184,0.16)", alignItems: "center", justifyContent: "center" },
   dateText: { color: "#F8FAFC", fontWeight: "700" },
+  clearDeadlineButton: { alignSelf: "flex-start", paddingVertical: 4 },
+  clearDeadlineText: { color: "#7DD3FC", fontSize: 13, fontWeight: "700" },
   topGap: { marginTop: 4 },
   actionRow: { flexDirection: "row", gap: 12 },
   actionIcon: { transform: [{ scale: 0.76 }] },

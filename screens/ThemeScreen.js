@@ -2,7 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, SectionBadge } from "../components/AppIcon";
-import { THEME_OPTIONS } from "../utils/preferences";
+import { getThemeTextStyle, THEME_OPTIONS } from "../utils/preferences";
 
 function ThemePreviewCard({ isCompact, isSelected, item, onPress }) {
   return (
@@ -14,8 +14,8 @@ function ThemePreviewCard({ isCompact, isSelected, item, onPress }) {
       <LinearGradient colors={item.gradient} style={[styles.previewGradient, isCompact && styles.previewGradientCompact]}>
         <View style={styles.previewHeader}>
           <View>
-            <Text style={[styles.previewEyebrow, { color: item.accentSoft }]}>Theme preview</Text>
-            <Text style={[styles.previewTitle, { color: item.text }]}>{item.name}</Text>
+            <Text style={[styles.previewEyebrow, getThemeTextStyle(item, "eyebrow"), { color: item.accentSoft }]}>Theme preview</Text>
+            <Text style={[styles.previewTitle, getThemeTextStyle(item, "title"), { color: item.text }]}>{item.name}</Text>
           </View>
           <View style={styles.previewCountCard}>
             <Text style={styles.previewCountValue}>3</Text>
@@ -23,10 +23,13 @@ function ThemePreviewCard({ isCompact, isSelected, item, onPress }) {
           </View>
         </View>
 
-          <View style={[styles.previewHero, isCompact && styles.previewHeroCompact, { backgroundColor: item.panel }]}>
-          <Text style={[styles.previewHeroTitle, { color: item.text }]}>Keep today moving</Text>
-          <Text style={[styles.previewHeroText, { color: item.muted }]}>
+        <View style={[styles.previewHero, isCompact && styles.previewHeroCompact, { backgroundColor: item.panel }]}>
+          <Text style={[styles.previewHeroTitle, getThemeTextStyle(item, "section"), { color: item.text }]}>Keep today moving</Text>
+          <Text style={[styles.previewHeroText, getThemeTextStyle(item, "body"), { color: item.muted }]}>
             Preview the dashboard colors, contrast, and card styling before applying.
+          </Text>
+          <Text style={[styles.previewBlurb, getThemeTextStyle(item, "subtitle"), { color: item.accentSoft }]}>
+            {item.blurb}
           </Text>
         </View>
 
@@ -54,7 +57,7 @@ function ThemePreviewCard({ isCompact, isSelected, item, onPress }) {
               tone="neutral"
               style={styles.previewActionIcon}
             />
-            <Text style={styles.previewPrimaryActionText}>
+            <Text style={[styles.previewPrimaryActionText, getThemeTextStyle(item, "button")]}>
               {isSelected ? "Selected" : "Apply theme"}
             </Text>
           </View>
@@ -79,9 +82,9 @@ export default function ThemeScreen({ bottomInset, onChangeTheme, theme, themeKe
         >
           <View style={styles.header}>
             <SectionBadge iconName="diamond-outline" label="Visual polish" theme={theme} />
-            <Text style={styles.eyebrow}>Personalize</Text>
-            <Text style={[styles.title, isCompact && styles.titleCompact]}>Theme Gallery</Text>
-            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact]}>
+            <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow")]}>Personalize</Text>
+            <Text style={[styles.title, isCompact && styles.titleCompact, getThemeTextStyle(theme, "title")]}>Theme Gallery</Text>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, getThemeTextStyle(theme, "subtitle")]}>
               Preview each theme here, then apply the one you want from this tab.
             </Text>
           </View>
@@ -206,6 +209,10 @@ const styles = StyleSheet.create({
   previewHeroText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  previewBlurb: {
+    fontSize: 13,
+    lineHeight: 19,
   },
   previewMetricRow: {
     flexDirection: "row",

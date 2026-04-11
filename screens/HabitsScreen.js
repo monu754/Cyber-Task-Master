@@ -14,13 +14,15 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, AppIconButton, SectionBadge } from "../components/AppIcon";
 import {
-  completeTaskAndGenerateNext,
   getHabitInsights,
   getHabitsWithDetails,
+  missHabitAndGenerateNext,
   removeHabit,
-  setTaskStatus,
+  revertHabitOutcome,
+  resolveHabitAndGenerateNext,
 } from "../database";
 import { buildHabitConsistencySeries } from "../utils/analytics";
+import { getThemeTextStyle } from "../utils/preferences";
 import { cancelTaskNotifications, scheduleSingleNotification } from "../utils/taskNotifications";
 
 const getLocalDayKey = (value) => {
@@ -42,30 +44,30 @@ const getHabitAvailability = (habit) => {
 
   if (!dueDayKey || !todayKey) {
     return {
-      canCompleteToday: false,
+      canResolveToday: false,
       tone: "neutral",
-      message: "Set a valid schedule before this habit can be completed.",
+      message: "Set a valid schedule before this habit can be updated.",
     };
   }
 
   if (dueDayKey < todayKey) {
     return {
-      canCompleteToday: false,
+      canResolveToday: false,
       tone: "missed",
-      message: "Missed earlier. Wait for the next scheduled check-in.",
+      message: "Missed earlier. The next check-in is already waiting.",
     };
   }
 
   if (dueDayKey > todayKey) {
     return {
-      canCompleteToday: false,
+      canResolveToday: false,
       tone: "upcoming",
-      message: "Upcoming habit. You can complete it on its scheduled day.",
+      message: "Upcoming habit. You can update it on its scheduled day.",
     };
   }
 
   return {
-    canCompleteToday: true,
+    canResolveToday: true,
     tone: "today",
     message: "Ready for today.",
   };
@@ -90,7 +92,7 @@ function HabitBars({ color, data }) {
   );
 }
 
-function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
+function HabitCard({ habit, onDelete, onEdit, onMarkDone, onMarkMissed, onUndoResult, theme }) {
   const availability = getHabitAvailability(habit);
   const dueLabel = habit.due_date
     ? new Date(habit.due_date).toLocaleString(undefined, {
@@ -100,6 +102,9 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
         minute: "2-digit",
       })
     : "No next reminder";
+  const lastResultLabel = habit.last_result_at
+    ? new Date(habit.last_result_at).toLocaleString()
+    : null;
 
   return (
     <View style={[styles.habitCard, { borderColor: `${habit.category_color || theme.accent}55` }]}>
@@ -115,28 +120,20 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
               </Text>
             </View>
           ) : null}
+          {habit.last_result_status ? (
+            <View
+              style={[
+                styles.badge,
+                habit.last_result_status === "Done" ? styles.resultBadgeDone : styles.resultBadgeMissed,
+              ]}
+            >
+              <Text style={styles.badgeText}>{habit.last_result_status}</Text>
+            </View>
+          ) : null}
         </View>
-        <TouchableOpacity
-          onPress={() => onToggleDone(habit)}
-          activeOpacity={availability.canCompleteToday ? 0.85 : 1}
-          disabled={!availability.canCompleteToday}
-        >
-          <AppIcon
-            name={habit.status === "Done" ? "checkmark-done" : "radio-button-off"}
-            size={16}
-            theme={theme}
-            tone={
-              habit.status === "Done"
-                ? "success"
-                : availability.canCompleteToday
-                  ? "neutral"
-                  : "muted"
-            }
-          />
-        </TouchableOpacity>
       </View>
 
-      <Text style={styles.habitTitle}>{habit.title}</Text>
+      <Text style={[styles.habitTitle, getThemeTextStyle(theme, "section")]}>{habit.title}</Text>
       {habit.description ? <Text style={styles.metaText}>{habit.description}</Text> : null}
       <Text style={styles.metaText}>Next check-in: {dueLabel}</Text>
       <Text
@@ -167,13 +164,56 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
         </View>
       </View>
 
-      {habit.last_completed_at ? (
+      {habit.last_result_status && lastResultLabel ? (
+        <Text style={styles.metaText}>
+          Last result: {habit.last_result_status.toLowerCase()} on {lastResultLabel}
+        </Text>
+      ) : habit.last_completed_at ? (
         <Text style={styles.metaText}>
           Last completed: {new Date(habit.last_completed_at).toLocaleString()}
         </Text>
       ) : (
-        <Text style={styles.metaText}>No completions yet.</Text>
+        <Text style={styles.metaText}>No results yet.</Text>
       )}
+
+      <View style={styles.actionPillRow}>
+        <TouchableOpacity
+          style={[
+            styles.actionPill,
+            availability.canResolveToday ? styles.actionPillEnabled : styles.actionPillDisabled,
+          ]}
+          activeOpacity={availability.canResolveToday ? 0.88 : 1}
+          disabled={!availability.canResolveToday}
+          onPress={() => onMarkDone(habit)}
+        >
+          <AppIcon name="checkmark-done" size={15} theme={theme} tone="success" />
+          <Text style={styles.actionPillText}>Done</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionPill,
+            availability.canResolveToday ? styles.actionPillEnabled : styles.actionPillDisabled,
+          ]}
+          activeOpacity={availability.canResolveToday ? 0.88 : 1}
+          disabled={!availability.canResolveToday}
+          onPress={() => onMarkMissed(habit)}
+        >
+          <AppIcon name="close" size={15} theme={theme} tone="danger" />
+          <Text style={styles.actionPillText}>Missed</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.actionPill,
+            habit.can_revert_latest_result ? styles.actionPillEnabled : styles.actionPillDisabled,
+          ]}
+          activeOpacity={habit.can_revert_latest_result ? 0.88 : 1}
+          disabled={!habit.can_revert_latest_result}
+          onPress={() => onUndoResult(habit)}
+        >
+          <AppIcon name="arrow-undo" size={15} theme={theme} tone="neutral" />
+          <Text style={styles.actionPillText}>Undo</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.cardButtons}>
         <AppIconButton
@@ -182,14 +222,6 @@ function HabitCard({ habit, onDelete, onEdit, onToggleDone, theme }) {
           onPress={() => onEdit(habit)}
           theme={theme}
           tone="accent"
-        />
-        <AppIconButton
-          accessibilityLabel="Complete habit"
-          disabled={!availability.canCompleteToday}
-          iconName="checkmark-done"
-          onPress={() => onToggleDone(habit)}
-          theme={theme}
-          tone="success"
         />
         <AppIconButton
           accessibilityLabel="Delete habit"
@@ -249,21 +281,46 @@ export default function HabitsScreen({ bottomInset, dataVersion, isActive, onOpe
     setRefreshing(false);
   };
 
-  const onToggleDone = async (habit) => {
+  const onMarkDone = async (habit) => {
     const availability = getHabitAvailability(habit);
-    if (!availability.canCompleteToday) {
+    if (!availability.canResolveToday) {
       Alert.alert("Not available", availability.message);
       return;
     }
 
-    if (habit.status === "Done") {
-      const updatedHabit = setTaskStatus(habit.id, "Todo");
-      if (updatedHabit?.due_date) {
-        await scheduleSingleNotification({ ...updatedHabit, completed: 0 });
-      }
-    } else {
-      await cancelTaskNotifications(habit.id);
-      completeTaskAndGenerateNext(habit.id);
+    await cancelTaskNotifications(habit.id);
+    const result = resolveHabitAndGenerateNext(habit.id, "Done");
+    if (result?.nextTask?.due_date) {
+      await scheduleSingleNotification({ ...result.nextTask, completed: 0 });
+    }
+    loadHabits();
+  };
+
+  const onMarkMissed = async (habit) => {
+    const availability = getHabitAvailability(habit);
+    if (!availability.canResolveToday) {
+      Alert.alert("Not available", availability.message);
+      return;
+    }
+
+    await cancelTaskNotifications(habit.id);
+    const result = missHabitAndGenerateNext(habit.id);
+    if (result?.nextTask?.due_date) {
+      await scheduleSingleNotification({ ...result.nextTask, completed: 0 });
+    }
+    loadHabits();
+  };
+
+  const onUndoResult = async (habit) => {
+    await cancelTaskNotifications(habit.id);
+    const revertedHabit = revertHabitOutcome(habit.id);
+    if (!revertedHabit) {
+      Alert.alert("Nothing to undo", "There is no recent habit result to revert.");
+      return;
+    }
+
+    if (revertedHabit?.due_date) {
+      await scheduleSingleNotification({ ...revertedHabit, completed: 0 });
     }
     loadHabits();
   };
@@ -290,15 +347,23 @@ export default function HabitsScreen({ bottomInset, dataVersion, isActive, onOpe
         data={filteredHabits}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <HabitCard habit={item} onDelete={onDelete} onEdit={onOpenPlanner} onToggleDone={onToggleDone} theme={theme} />
+          <HabitCard
+            habit={item}
+            onDelete={onDelete}
+            onEdit={onOpenPlanner}
+            onMarkDone={onMarkDone}
+            onMarkMissed={onMarkMissed}
+            onUndoResult={onUndoResult}
+            theme={theme}
+          />
         )}
         ListHeaderComponent={
           <View style={styles.header}>
             <SectionBadge iconName="infinite-outline" label="Routine loop" theme={theme} />
-            <Text style={[styles.eyebrow, { color: theme?.accentSoft || "#7DD3FC" }]}>Routine focus</Text>
-            <Text style={[styles.title, isCompact && styles.titleCompact, { color: theme?.text || "#F8FAFC" }]}>Habit Tracker</Text>
-            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, { color: theme?.muted || "#94A3B8" }]}>
-              Recurring routines live here. Complete one and the next check-in is created automatically.
+            <Text style={[styles.eyebrow, getThemeTextStyle(theme, "eyebrow"), { color: theme?.accentSoft || "#7DD3FC" }]}>Routine focus</Text>
+            <Text style={[styles.title, isCompact && styles.titleCompact, getThemeTextStyle(theme, "title"), { color: theme?.text || "#F8FAFC" }]}>Habit Tracker</Text>
+            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact, getThemeTextStyle(theme, "subtitle"), { color: theme?.muted || "#94A3B8" }]}>
+              Recurring routines live here. Mark them done, missed, or undo the last result when you need to correct it.
             </Text>
 
             <View style={[styles.metricRow, isSmallScreen && styles.metricRowCompact]}>
@@ -413,6 +478,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
+  resultBadgeDone: {
+    backgroundColor: "rgba(16, 185, 129, 0.16)",
+  },
+  resultBadgeMissed: {
+    backgroundColor: "rgba(239, 68, 68, 0.16)",
+  },
   badgeText: { color: "#C8D6E5", fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
   habitTitle: { color: "#F8FAFC", fontSize: 17, fontWeight: "800", lineHeight: 24, flexShrink: 1 },
   metaText: { color: "#94A3B8", fontSize: 12, lineHeight: 18, flexShrink: 1 },
@@ -432,6 +503,27 @@ const styles = StyleSheet.create({
   },
   statValue: { color: "#F8FAFC", fontSize: 18, fontWeight: "900" },
   statLabel: { color: "#8FA5BF", fontSize: 11, fontWeight: "700", marginTop: 4 },
+  actionPillRow: { flexDirection: "row", gap: 10 },
+  actionPill: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  actionPillEnabled: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(148,163,184,0.16)",
+  },
+  actionPillDisabled: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(148,163,184,0.08)",
+    opacity: 0.45,
+  },
+  actionPillText: { color: "#F8FAFC", fontSize: 13, fontWeight: "800" },
   cardButtons: { flexDirection: "row", gap: 10 },
   emptyText: { color: "#94A3B8", textAlign: "center", paddingVertical: 28 },
   fab: {
